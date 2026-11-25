@@ -1,0 +1,35 @@
+{
+    "name": "LogSight",
+    "short_name": "LogSight",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#5459E3",
+    "theme_color": "#4C6EF5",
+    "description": "Collect, search and explore logs from all your apps.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

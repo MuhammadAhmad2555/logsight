@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "370561670927",
+    "project_id": "apptrack-logs-bs9n0",
+    "storage_bucket": "apptrack-logs-bs9n0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:370561670927:android:4282f82da82f6d905a287a",
+        "android_client_info": {
+          "package_name": "com.apptrack.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "370561670927-l6l8tfvb1u7qfu3jf6r843v0749cno9h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4mq_A0bLkh447935q-aUQcbHp_hOE9c0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "370561670927-l6l8tfvb1u7qfu3jf6r843v0749cno9h.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "370561670927-s05a74ofjmsi9pn370j5kniojfs29u1f.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.apptrack.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,87 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(js|wasm|png|ttf|otf)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=604800"
+          }
+        ]
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "apptrack-logs-bs9n0",
+          "appId": "1:370561670927:android:4282f82da82f6d905a287a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "apptrack-logs-bs9n0",
+          "appId": "1:370561670927:ios:7ad348b62c17b8155a287a",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "apptrack-logs-bs9n0",
+          "appId": "1:370561670927:ios:7ad348b62c17b8155a287a",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "apptrack-logs-bs9n0",
+          "configurations": {
+            "android": "1:370561670927:android:4282f82da82f6d905a287a",
+            "ios": "1:370561670927:ios:7ad348b62c17b8155a287a",
+            "macos": "1:370561670927:ios:7ad348b62c17b8155a287a",
+            "web": "1:370561670927:web:5eaffd00d855ebcf5a287a",
+            "windows": "1:370561670927:web:75ba4c3bf48b787e5a287a"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "test",
+        "*.log"
+      ]
+    }
+  ]
+}
