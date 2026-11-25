@@ -1,0 +1,14 @@
+{
+  // Cloudflare Workers (static assets) config for the LogSight web app.
+  // Build command:  bash tool/cloudflare_build.sh
+  // Deploy command: npx wrangler deploy
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "logsight",
+  "compatibility_date": "2026-11-23",
+  "assets": {
+    // Flutter's build output (not the web/ source folder).
+    "directory": "build/web",
+    // Serve index.html for app links like /p/<id>/logs.
+    "not_found_handling": "single-page-application"
+  }
+}

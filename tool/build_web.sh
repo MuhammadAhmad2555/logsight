@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Builds the LogSight web app for hosting (Cloudflare Pages / Firebase Hosting).
-# Flutter doesn't copy web/_redirects into the build, so this script does.
+# Builds the LogSight web app into build/web.
+# Hosting serves index.html for app links (/p/<id>/logs):
+#   - Cloudflare Workers: wrangler.jsonc sets not_found_handling = single-page-application
+#   - Cloudflare Pages:   automatic (no 404.html in the build)
+#   - Firebase Hosting:   firebase.json rewrites ** to /index.html
 set -euo pipefail
 cd "$(dirname "$0")/.."
 flutter build web --release "$@"
-cp web/_redirects build/web/_redirects
-echo "Ready to upload: $(pwd)/build/web  (includes _redirects for path URLs)"
+echo "Built: $(pwd)/build/web"

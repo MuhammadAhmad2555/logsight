@@ -113,20 +113,25 @@ firebase deploy --only firestore,auth      # rules, indexes, email sign-in
 tool/build_web.sh && firebase deploy --only hosting   # or upload build/web to Cloudflare Pages
 ```
 
-### Hosting on Cloudflare Pages
+### Hosting on Cloudflare
 
-Connect this repo in Cloudflare → Workers & Pages → Create → Pages → Connect to Git, then:
+**Workers (recommended, what "Connect to Git" creates today):** connect this repo, then in
+the Worker's **Settings → Build**:
 
 | Setting | Value |
 |---|---|
-| Framework preset | None |
 | Build command | `bash tool/cloudflare_build.sh` |
-| Build output directory | `build/web` |
+| Deploy command | `npx wrangler deploy` |
 
-The script installs Flutter 3.44.8 (Cloudflare has no Flutter) and builds with
-`tool/build_web.sh`, which adds `_redirects` so links like `/p/<id>/logs` work.
-Then add your custom domain (e.g. app.arcx9.com) under the project's **Custom domains**,
-and add the same domain in Firebase → Authentication → Settings → Authorized domains.
+`wrangler.jsonc` serves `build/web` with single-page-app routing, so links like
+`/p/<id>/logs` work.
+
+**Pages:** framework preset *None*, build command `bash tool/cloudflare_build.sh`,
+output directory `build/web` (Pages handles app links automatically).
+
+The build script installs Flutter 3.44.8, since Cloudflare's build image has none. Then add your
+custom domain (e.g. app.arcx9.com) and add the same domain in Firebase → Authentication →
+Settings → Authorized domains.
 
 ### Testing
 
