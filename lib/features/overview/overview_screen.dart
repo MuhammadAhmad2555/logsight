@@ -70,7 +70,12 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
     final pid = widget.projectId;
     final q = LogQuery(range: TimeRange.relative(_range));
     final errQ = q.copyWith(severities: _errorLevels);
-    final services = (await ref.read(servicesProvider(pid).future)).map((s) => s.name).take(12).toList();
+    // Read the streams' first value directly: in Riverpod 3 a provider read
+    // with ref.read (no listener) is paused, so awaiting its .future hangs.
+    final services = (await ref.read(projectRepositoryProvider).watchServices(pid).first)
+        .map((s) => s.name)
+        .take(12)
+        .toList();
     _servicesLoaded = services;
 
     final results = await Future.wait([
@@ -81,7 +86,7 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
       for (final s in services) repo.count(pid, q.copyWith(services: [s])),
     ]);
     final errorPage = results[3] as LogPage;
-    final states = await ref.read(issueStatesProvider(pid).future);
+    final states = await ref.read(insightsRepositoryProvider).watchIssues(pid).first;
     return _OverviewData(
       total: results[0] as int,
       errors: results[1] as int,

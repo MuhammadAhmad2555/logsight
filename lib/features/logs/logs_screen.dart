@@ -369,9 +369,15 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         builder: (ctx, controller) => LogDetail(
           log: log,
           scrollController: controller,
+          projectId: widget.projectId,
+          related: _logs,
           onFilter: (f) {
             Navigator.pop(ctx);
             _applyFilter(f);
+          },
+          onOpen: (other) {
+            Navigator.pop(ctx);
+            _select(other);
           },
         ),
       ),
@@ -427,14 +433,17 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 14, 16, 16),
           child: SizedBox(
-            width: (MediaQuery.sizeOf(context).width * 0.4).clamp(300.0, 440.0),
+            width: (MediaQuery.sizeOf(context).width * 0.42).clamp(340.0, 520.0),
             child: GlassPanel(
               radius: 22,
               strength: 1.3,
               child: LogDetail(
                 key: ValueKey(_selected!.id),
                 log: _selected!,
+                projectId: widget.projectId,
+                related: _logs,
                 onFilter: _applyFilter,
+                onOpen: (other) => setState(() => _selected = other),
                 onClose: () => setState(() => _selected = null),
               ),
             ),
@@ -703,7 +712,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               child: const Row(
                 children: [
                   SizedBox(width: 170, child: Text('TIMESTAMP')),
-                  SizedBox(width: 64, child: Text('LEVEL')),
+                  SizedBox(width: 82, child: Text('LEVEL')),
                   SizedBox(width: 150, child: Text('SERVICE.NAME')),
                   Expanded(child: Text('MESSAGE')),
                 ],
@@ -1028,7 +1037,7 @@ class _LogRow extends StatelessWidget {
                 child: Text(_wideFmt.format(log.timestamp), style: monoStyle.copyWith(fontSize: 12)),
               ),
               SizedBox(
-                width: 64,
+                width: 82,
                 child: Align(alignment: Alignment.centerLeft, child: SeverityBadge(log.severity)),
               ),
               SizedBox(

@@ -9,7 +9,17 @@ void showMessage(BuildContext context, String message, {bool error = false}) {
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Row(
+          children: [
+            Icon(
+              error ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+              size: 18,
+              color: error ? scheme.onError : scheme.onInverseSurface,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
         backgroundColor: error ? scheme.error : null,
         behavior: SnackBarBehavior.floating,
       ),
@@ -96,19 +106,44 @@ class SeverityBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final c = severity.color;
     return Container(
-      width: compact ? 46 : 52,
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: severity.color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(4)),
-      child: Text(
-        severity.label,
-        style: TextStyle(
-          color: severity.color,
-          fontSize: compact ? 10 : 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.3,
-        ),
+      width: compact ? 62 : 70,
+      height: compact ? 20 : 22,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: dark ? 0.16 : 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.withValues(alpha: dark ? 0.30 : 0.22)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: c,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: c.withValues(alpha: 0.6), blurRadius: 4)],
+            ),
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              severity.label,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                color: c,
+                fontSize: compact ? 9.5 : 10.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -125,6 +160,8 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -133,18 +170,34 @@ class EmptyState extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 40, color: theme.colorScheme.outline),
-              const SizedBox(height: 12),
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      scheme.primary.withValues(alpha: dark ? 0.24 : 0.14),
+                      scheme.secondary.withValues(alpha: dark ? 0.14 : 0.08),
+                    ],
+                  ),
+                  border: Border.all(color: scheme.primary.withValues(alpha: dark ? 0.25 : 0.16)),
+                ),
+                child: Icon(icon, size: 26, color: scheme.primary),
+              ),
+              const SizedBox(height: 16),
               Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
               if (message != null) ...[
                 const SizedBox(height: 6),
                 Text(
                   message!,
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
                 ),
               ],
-              if (action != null) ...[const SizedBox(height: 16), action!],
+              if (action != null) ...[const SizedBox(height: 20), action!],
             ],
           ),
         ),

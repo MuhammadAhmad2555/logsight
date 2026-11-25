@@ -18,6 +18,9 @@ class _NavItem {
   final IconData selectedIcon;
 }
 
+/// Sidebar section headings, keyed by the index of their first item.
+const _sectionStarts = {0: 'Analyze', 6: 'Configure'};
+
 /// How many items fit in the phone tab bar; the rest go under "More".
 const _phoneTabs = 4;
 
@@ -160,7 +163,9 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                             child: ListView(
                               padding: EdgeInsets.zero,
                               children: [
-                                for (var i = 0; i < _items.length; i++)
+                                for (var i = 0; i < _items.length; i++) ...[
+                                  if (_sectionStarts.containsKey(i))
+                                    _NavSection(_sectionStarts[i]!, collapsed: rail, first: i == 0),
                                   Padding(
                                     padding: EdgeInsets.symmetric(horizontal: rail ? 10 : 12, vertical: 2),
                                     child: _SideNavTile(
@@ -170,6 +175,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                                       onTap: () => _go(i),
                                     ),
                                   ),
+                                ],
                               ],
                             ),
                           ),
@@ -259,7 +265,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
   }
 }
 
-class _SideNavTile extends StatelessWidget {
+class _SideNavTile extends StatefulWidget {
   const _SideNavTile({
     required this.item,
     required this.selected,
@@ -275,42 +281,124 @@ class _SideNavTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_SideNavTile> createState() => _SideNavTileState();
+}
+
+class _SideNavTileState extends State<_SideNavTile> {
+  bool _hover = false;
+
+  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final iconColor = selected ? scheme.primary : (muted ? scheme.outline : scheme.onSurfaceVariant);
-    final icon = Icon(selected ? item.selectedIcon : item.icon, size: 20, color: iconColor);
-    final tile = Material(
-      color: selected ? scheme.primary.withValues(alpha: 0.14) : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: collapsed ? 0 : 12, vertical: 10),
-          child: collapsed
-              ? Center(child: icon)
-              : Row(
-                  children: [
-                    icon,
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.fade,
-                        softWrap: false,
-                        style: TextStyle(
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                          color: selected ? scheme.primary : (muted ? scheme.outline : scheme.onSurface),
-                        ),
-                      ),
-                    ),
-                  ],
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final selected = widget.selected;
+    final fg = selected
+        ? scheme.primary
+        : (widget.muted ? scheme.outline : (_hover ? scheme.onSurface : scheme.onSurfaceVariant));
+    final bg = selected
+        ? scheme.primary.withValues(alpha: dark ? 0.16 : 0.10)
+        : (_hover ? scheme.onSurface.withValues(alpha: dark ? 0.06 : 0.045) : Colors.transparent);
+    final icon = Icon(selected ? widget.item.selectedIcon : widget.item.icon, size: 19, color: fg);
+
+    final tile = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          height: 40,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: selected ? scheme.primary.withValues(alpha: dark ? 0.22 : 0.16) : Colors.transparent,
+            ),
+          ),
+          child: Stack(
+            children: [
+              // Accent bar on the active item.
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                left: 0,
+                top: selected ? 10 : 20,
+                bottom: selected ? 10 : 20,
+                width: 3,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: selected ? Brand.accent(theme.brightness) : null,
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
+                  ),
                 ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12),
+                child: widget.collapsed
+                    ? Center(child: icon)
+                    : Row(
+                        children: [
+                          icon,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.item.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.fade,
+                              softWrap: false,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontSize: 13.5,
+                                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                                color: selected ? scheme.primary : (widget.muted ? scheme.outline : scheme.onSurface),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
-    return collapsed ? Tooltip(message: item.label, preferBelow: false, child: tile) : tile;
+    return widget.collapsed ? Tooltip(message: widget.item.label, preferBelow: false, child: tile) : tile;
+  }
+}
+
+class _NavSection extends StatelessWidget {
+  const _NavSection(this.label, {required this.collapsed, required this.first});
+
+  final String label;
+  final bool collapsed;
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (collapsed) {
+      return first
+          ? const SizedBox(height: 4)
+          : const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+              child: Divider(),
+            );
+    }
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, first ? 4 : 16, 16, 6),
+      child: Text(
+        label.toUpperCase(),
+        style: theme.textTheme.labelSmall?.copyWith(
+          fontSize: 10.5,
+          letterSpacing: 1.0,
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.outline,
+        ),
+      ),
+    );
   }
 }
 
@@ -359,43 +447,75 @@ class _ProjectSwitcher extends ConsumerWidget {
       child: iconOnly
           ? Tooltip(
               message: current.name,
-              child: Container(
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: scheme.primary.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  current.name.characters.first.toUpperCase(),
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: scheme.primary),
-                ),
-              ),
+              child: SizedBox(height: 44, child: Center(child: _ProjectAvatar(current.name, size: 36))),
             )
           : Container(
-              padding: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 6 : 9),
+              padding: EdgeInsets.fromLTRB(compact ? 4 : 8, compact ? 4 : 8, 8, compact ? 4 : 8),
               decoration: BoxDecoration(
-                color: compact ? null : scheme.surface.withValues(alpha: 0.35),
+                color: compact ? null : scheme.surface.withValues(alpha: 0.30),
                 border: compact ? null : Border.all(color: scheme.outlineVariant),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
                 children: [
-                  Icon(Icons.folder_outlined, size: 18, color: scheme.onSurfaceVariant),
-                  const SizedBox(width: 8),
+                  _ProjectAvatar(current.name, size: compact ? 26 : 30),
+                  const SizedBox(width: 10),
                   Flexible(
-                    child: Text(
-                      current.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!compact)
+                          Text(
+                            'Project',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: scheme.outline,
+                              fontSize: 10.5,
+                            ),
+                          ),
+                        Text(
+                          current.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: -0.2),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Icon(Icons.unfold_more, size: 18, color: scheme.onSurfaceVariant),
+                  Icon(Icons.unfold_more_rounded, size: 18, color: scheme.outline),
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// Rounded-square avatar with the project's initial on the brand gradient.
+class _ProjectAvatar extends StatelessWidget {
+  const _ProjectAvatar(this.name, {required this.size});
+
+  final String name;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name.trim().isEmpty ? '?' : name.trim().characters.first.toUpperCase();
+    return Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        gradient: Brand.accent(Brightness.light),
+        borderRadius: BorderRadius.circular(size * 0.3),
+        boxShadow: [
+          BoxShadow(color: Brand.indigo.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3)),
+        ],
+      ),
+      child: Text(
+        initial,
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: size * 0.45),
+      ),
     );
   }
 }

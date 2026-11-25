@@ -237,6 +237,11 @@
       "indexes": []
     },
     {
+      "collectionGroup": "logs",
+      "fieldPath": "error",
+      "indexes": []
+    },
+    {
       "collectionGroup": "events",
       "fieldPath": "properties",
       "indexes": []

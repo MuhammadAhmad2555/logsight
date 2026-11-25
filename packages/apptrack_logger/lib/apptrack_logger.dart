@@ -107,10 +107,51 @@ class AppTrackLogger {
       log(LogLevel.info, message, attributes: attributes, traceId: traceId);
   void warn(String message, {Map<String, Object?>? attributes, String? traceId}) =>
       log(LogLevel.warn, message, attributes: attributes, traceId: traceId);
-  void error(String message, {Map<String, Object?>? attributes, String? traceId}) =>
-      log(LogLevel.error, message, attributes: attributes, traceId: traceId);
-  void fatal(String message, {Map<String, Object?>? attributes, String? traceId}) =>
-      log(LogLevel.fatal, message, attributes: attributes, traceId: traceId);
+
+  /// Logs an error. All error details are optional:
+  /// - [error]: the caught exception (its type and message are recorded)
+  /// - [stackTrace]: where it happened
+  /// - [reason]: your own explanation, e.g. 'Receipt rejected by backend'
+  ///
+  /// ```dart
+  /// try { ... } catch (e, st) {
+  ///   logger.error('Purchase failed', error: e, stackTrace: st, reason: 'Store returned no receipt');
+  /// }
+  /// ```
+  void error(
+    String message, {
+    Map<String, Object?>? attributes,
+    String? traceId,
+    Object? error,
+    StackTrace? stackTrace,
+    String? reason,
+  }) => log(
+    LogLevel.error,
+    message,
+    attributes: attributes,
+    traceId: traceId,
+    error: error,
+    stackTrace: stackTrace,
+    reason: reason,
+  );
+
+  /// Like [error], for crashes and unrecoverable failures.
+  void fatal(
+    String message, {
+    Map<String, Object?>? attributes,
+    String? traceId,
+    Object? error,
+    StackTrace? stackTrace,
+    String? reason,
+  }) => log(
+    LogLevel.fatal,
+    message,
+    attributes: attributes,
+    traceId: traceId,
+    error: error,
+    stackTrace: stackTrace,
+    reason: reason,
+  );
 
   String get _root => 'projects/$firebaseProjectId/databases/(default)/documents/projects/$projectId';
 
@@ -257,8 +298,15 @@ class AppTrackLogger {
     Map<String, Object?>? attributes,
     String? traceId,
     DateTime? timestamp,
+    Object? error,
+    StackTrace? stackTrace,
+    String? reason,
   }) {
     if (_closed || level.index < minLevel.index) return;
+    // Error details are only kept on error and fatal logs.
+    final details = level.index >= LogLevel.error.index
+        ? errorDetails(error: error, stackTrace: stackTrace, reason: reason)
+        : null;
     // ignore: avoid_print
     if (printToConsole) print('[${level.name.toUpperCase()}] $service: $message');
     final attrs = {...defaultAttributes, ...?attributes};
@@ -277,6 +325,7 @@ class AppTrackLogger {
       userId: userId,
       sessionId: sessionId,
       traceId: traceId,
+      error: details,
     ));
     _queue.add({
       'ts': ts,
@@ -289,6 +338,7 @@ class AppTrackLogger {
       if (userId != null) 'userId': userId,
       if (sessionId != null) 'sessionId': sessionId,
       'traceId': ?traceId,
+      'error': ?details,
     });
     _trimQueue();
     if (_queue.length >= batchSize) flush();
@@ -470,6 +520,7 @@ String formatLogLine(
   String? userId,
   String? sessionId,
   String? traceId,
+  Map<String, String>? error,
 }) {
   final b = StringBuffer()
     ..write(ts.toUtc().toIso8601String())
@@ -488,6 +539,7 @@ String formatLogLine(
       ..write(' ')
       ..write(jsonEncode(attributes, toEncodable: (o) => o is DateTime ? o.toUtc().toIso8601String() : '$o'));
   }
+  if (error != null && error.isNotEmpty) b..write(' error=')..write(jsonEncode(error));
   return b.toString();
 }
 
@@ -500,4 +552,22 @@ List<String> tokenize(String text, {int maxTokens = 64}) {
     if (seen.length >= maxTokens) break;
   }
   return seen.toList();
+}
+
+/// Builds the optional `error` field of a log, or null when there's nothing
+/// to record. Long values are cut to stay within the server's limits.
+Map<String, String>? errorDetails({Object? error, StackTrace? stackTrace, String? reason}) {
+  String? cut(String? v, int max) {
+    final t = v?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t.length > max ? t.substring(0, max) : t;
+  }
+
+  final out = <String, String>{
+    'type': ?cut(error?.runtimeType.toString(), 200),
+    'message': ?cut(error?.toString(), 4000),
+    'reason': ?cut(reason, 4000),
+    'stack': ?cut(stackTrace?.toString(), 16000),
+  };
+  return out.isEmpty ? null : out;
 }

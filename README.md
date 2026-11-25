@@ -153,6 +153,14 @@ final appTrack = AppTrackLogger(
   service: 'keyo_ios',
 );
 appTrack.error('Payment failed', attributes: {'order_id': 42});
+
+// Optional full error details (error and fatal logs only): the exception's
+// type and message, your own reason, and the stack trace.
+try {
+  await buy();
+} catch (e, st) {
+  appTrack.error('Purchase failed', error: e, stackTrace: st, reason: 'Backend rejected the receipt');
+}
 ```
 
 ## Limits and next steps

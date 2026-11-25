@@ -118,6 +118,49 @@ class Invite {
   }
 }
 
+/// Optional full error details attached to an `error` or `fatal` log:
+/// what was thrown, why, and where (stack trace).
+class LogError {
+  const LogError({this.type, this.message, this.reason, this.stack});
+
+  /// Exception class, e.g. `SocketException`.
+  final String? type;
+
+  /// The exception's own message (`error.toString()`).
+  final String? message;
+
+  /// A human explanation added by the developer, e.g. "Receipt rejected by backend".
+  final String? reason;
+  final String? stack;
+
+  bool get isEmpty => [type, message, reason, stack].every((v) => v == null || v.isEmpty);
+
+  /// Non-empty stack lines.
+  List<String> get stackLines =>
+      (stack ?? '').split('\n').map((l) => l.trimRight()).where((l) => l.isNotEmpty).toList();
+
+  static LogError? fromMap(Object? m) {
+    if (m is! Map) return null;
+    String? s(String k) => m[k] is String && (m[k] as String).isNotEmpty ? m[k] as String : null;
+    final e = LogError(type: s('type'), message: s('message'), reason: s('reason'), stack: s('stack'));
+    return e.isEmpty ? null : e;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'type': ?type,
+    'message': ?message,
+    'reason': ?reason,
+    'stack': ?stack,
+  };
+
+  /// Everything as plain text, for copying into a bug report.
+  String toText() => [
+    if (type != null || message != null) [type, message].whereType<String>().join(': '),
+    if (reason != null) 'Reason: $reason',
+    ?stack,
+  ].join('\n\n');
+}
+
 class LogEntry {
   const LogEntry({
     required this.id,
@@ -131,6 +174,7 @@ class LogEntry {
     this.traceId,
     this.sessionId,
     this.userId,
+    this.error,
   });
 
   final String id;
@@ -144,6 +188,9 @@ class LogEntry {
   final String? traceId;
   final String? sessionId;
   final String? userId;
+
+  /// Full error details (error/fatal logs only, optional).
+  final LogError? error;
 
   factory LogEntry.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? const {};
@@ -159,6 +206,7 @@ class LogEntry {
       traceId: d['traceId'] as String?,
       sessionId: d['sessionId'] as String?,
       userId: d['userId'] as String?,
+      error: LogError.fromMap(d['error']),
     );
   }
 
@@ -168,7 +216,7 @@ class LogEntry {
   String get pattern => _patterns[this] ??= patternOf(message);
 
   /// Groups errors into issues: service + exception type + pattern.
-  String get fingerprint => issueFingerprint(service, message, exceptionType: attributes['exception.type']?.toString());
+  String get fingerprint => issueFingerprint(service, message, exceptionType: error?.type ?? attributes['exception.type']?.toString());
 
   /// Looks up a field by name: built-in fields first, then attributes
   /// (dot paths such as `device.model` are supported).
@@ -190,6 +238,12 @@ class LogEntry {
         return sessionId;
       case 'userId':
         return userId;
+      case 'error.type':
+        return error?.type;
+      case 'error.message':
+        return error?.message;
+      case 'error.reason':
+        return error?.reason;
     }
     if (attributes.containsKey(key)) return attributes[key];
     Object? cur = attributes;
@@ -213,6 +267,7 @@ class LogEntry {
     if (traceId != null) 'traceId': traceId,
     if (sessionId != null) 'sessionId': sessionId,
     if (userId != null) 'userId': userId,
+    if (error != null) 'error': error!.toJson(),
     'attributes': _jsonSafe(attributes),
   };
 

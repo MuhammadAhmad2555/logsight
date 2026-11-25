@@ -333,10 +333,24 @@ service cloud.firestore {
           return !(f in d) || (d[f] is string && d[f].size() <= max);
         }
 
+        // Optional full error details; only on error/fatal logs.
+        function validError(d) {
+          return !('error' in d) || (
+            d.severity in ['error', 'fatal']
+            && d.error is map
+            && d.error.size() > 0
+            && d.error.keys().hasOnly(['type', 'message', 'reason', 'stack'])
+            && optString(d.error, 'type', 200)
+            && optString(d.error, 'message', 4000)
+            && optString(d.error, 'reason', 4000)
+            && optString(d.error, 'stack', 16000)
+          );
+        }
+
         function validLog(d) {
           return d.keys().hasAll(['ts', 'severity', 'message', 'service', 'key', 'receivedAt'])
             && d.keys().hasOnly(['ts', 'severity', 'message', 'service', 'key', 'receivedAt',
-                                 'attributes', 'tokens', 'traceId', 'sessionId', 'userId'])
+                                 'attributes', 'tokens', 'traceId', 'sessionId', 'userId', 'error'])
             && d.ts is timestamp
             && d.ts > request.time - duration.value(7, 'd')
             && d.ts < request.time + duration.value(1, 'h')
@@ -351,7 +365,8 @@ service cloud.firestore {
             && (!('tokens' in d) || (d.tokens is list && d.tokens.size() <= 64))
             && optString(d, 'traceId', 128)
             && optString(d, 'sessionId', 128)
-            && optString(d, 'userId', 128);
+            && optString(d, 'userId', 128)
+            && validError(d);
         }
 
         allow read: if isMember(pid);
