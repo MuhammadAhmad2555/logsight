@@ -1,10 +1,15 @@
 {
   // Cloudflare Workers (static assets) config for the LogSight web app.
-  // Build command:  bash tool/cloudflare_build.sh
-  // Deploy command: npx wrangler deploy
+  // Cloudflare's deploy command (npx wrangler deploy) runs the build below
+  // first, so no separate build command is needed in the dashboard.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "logsight",
   "compatibility_date": "2026-11-23",
+  "build": {
+    // Installs Flutter if missing (Cloudflare's image has none) and runs
+    // flutter build web into build/web.
+    "command": "bash tool/cloudflare_build.sh"
+  },
   "assets": {
     // Flutter's build output (not the web/ source folder).
     "directory": "build/web",
