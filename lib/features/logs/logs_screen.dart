@@ -35,7 +35,9 @@ class LogsScreen extends ConsumerStatefulWidget {
 
 class _LogsScreenState extends ConsumerState<LogsScreen> {
   final _scroll = ScrollController();
-  late final TextEditingController _search = TextEditingController(text: widget.query.search);
+  late final TextEditingController _search = TextEditingController(
+    text: widget.query.search,
+  );
 
   List<LogEntry> _logs = [];
   DocumentSnapshot<Map<String, dynamic>>? _cursor;
@@ -68,6 +70,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   LogEntry? _selected;
   final Set<String> _knownServices = {};
   final Set<String> _knownKeys = {};
+  final Map<String, Set<String>> _knownValues = {};
   final Set<String> _registering = {};
 
   /// Bumped on every reload so results from older requests are ignored.
@@ -87,10 +90,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   void didUpdateWidget(LogsScreen old) {
     super.didUpdateWidget(old);
     if (old.query != widget.query || old.projectId != widget.projectId) {
-      if (_search.text != widget.query.search) _search.text = widget.query.search;
+      if (_search.text != widget.query.search)
+        _search.text = widget.query.search;
       if (old.projectId != widget.projectId) {
         _knownServices.clear();
         _knownKeys.clear();
+        _knownValues.clear();
       }
       _reload();
     }
@@ -105,21 +110,32 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   void _setQuery(LogQuery q) {
-    final uri = Uri(path: '/p/${widget.projectId}/logs', queryParameters: q.toQueryParameters());
+    final uri = Uri(
+      path: '/p/${widget.projectId}/logs',
+      queryParameters: q.toQueryParameters(),
+    );
     context.go(uri.toString());
   }
 
   void _remember(Iterable<LogEntry> logs) {
     final registry = {
-      for (final s in ref.read(servicesProvider(widget.projectId)).value ?? const <ServiceInfo>[]) s.name,
+      for (final s
+          in ref.read(servicesProvider(widget.projectId)).value ??
+              const <ServiceInfo>[])
+        s.name,
     };
     for (final l in logs) {
       _knownServices.add(l.service);
       _addKeys(l.attributes, '');
       // Logs from older SDKs or plain HTTP don't register their service.name;
       // add it to the project's service list so it appears in the switcher.
-      if (l.service.isNotEmpty && !registry.contains(l.service) && _registering.add(l.service)) {
-        ref.read(projectRepositoryProvider).registerService(widget.projectId, l.service).catchError((_) {});
+      if (l.service.isNotEmpty &&
+          !registry.contains(l.service) &&
+          _registering.add(l.service)) {
+        ref
+            .read(projectRepositoryProvider)
+            .registerService(widget.projectId, l.service)
+            .catchError((_) {});
       }
     }
   }
@@ -128,11 +144,25 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   void _addKeys(Map<String, dynamic> m, String prefix) {
     for (final e in m.entries) {
       final k = prefix.isEmpty ? e.key : '$prefix.${e.key}';
-      if (e.value is Map && (e.value as Map).isNotEmpty && prefix.split('.').length < 3) {
+      if (e.value is Map &&
+          (e.value as Map).isNotEmpty &&
+          prefix.split('.').length < 3) {
         _addKeys((e.value as Map).cast<String, dynamic>(), k);
       } else {
         _knownKeys.add(k);
+        _rememberFilterValue(k, e.value);
       }
+    }
+  }
+
+  void _rememberFilterValue(String key, dynamic value) {
+    if (value == null || value is Map) return;
+    final values = value is Iterable ? value : [value];
+    for (final item in values) {
+      if (item == null || item is Map || item is Iterable) continue;
+      final text = item.toString().trim();
+      if (text.isNotEmpty)
+        _knownValues.putIfAbsent(key, () => <String>{}).add(text);
     }
   }
 
@@ -150,19 +180,23 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     }
     final label = _q.services.length == 1 ? _q.services.first : 'logs';
     try {
-      final path = await ref.read(textLogStoreProvider(widget.projectId)).export(_logs, label, csv: csv);
+      final path = await ref
+          .read(textLogStoreProvider(widget.projectId))
+          .export(_logs, label, csv: csv);
       if (!mounted || path == null) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Saved ${_logs.length} logs to $path'),
           action: SnackBarAction(
             label: 'Copy path',
-            onPressed: () => copyToClipboard(context, path, what: 'Path copied'),
+            onPressed: () =>
+                copyToClipboard(context, path, what: 'Path copied'),
           ),
         ),
       );
     } catch (e) {
-      if (mounted) showMessage(context, 'Couldn’t save the file: $e', error: true);
+      if (mounted)
+        showMessage(context, 'Couldn’t save the file: $e', error: true);
     }
   }
 
@@ -253,7 +287,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   void _onScroll() {
-    if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) _loadMore();
+    if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400)
+      _loadMore();
   }
 
   /// Listens for logs newer than the newest one shown and adds them on top.
@@ -278,7 +313,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             });
           },
           onError: (Object e) {
-            if (mounted) showMessage(context, 'Live updates stopped: ${friendlyError(e)}', error: true);
+            if (mounted)
+              showMessage(
+                context,
+                'Live updates stopped: ${friendlyError(e)}',
+                error: true,
+              );
           },
         );
     // Keep the chart and level totals current too.
@@ -298,7 +338,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     if (!_q.range.isRelative) {
       // Live needs a range that moves with time: switch to the last hour.
       _paused = false;
-      _setQuery(_q.copyWith(range: const TimeRange.relative(RelativePreset.h1)));
+      _setQuery(
+        _q.copyWith(range: const TimeRange.relative(RelativePreset.h1)),
+      );
       return;
     }
     setState(() => _paused = !_paused);
@@ -310,7 +352,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   void _applyFilter(AttrFilter f) {
-    if (f.key == 'service' && (f.op == FilterOp.equals || f.op == FilterOp.notEquals)) {
+    if (f.key == 'service' &&
+        (f.op == FilterOp.equals || f.op == FilterOp.notEquals)) {
       _addService(f.value, exclude: f.op == FilterOp.notEquals);
       return;
     }
@@ -334,7 +377,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       _setQuery(
         _q.copyWith(
           services: {..._q.services, service}.toList(),
-          excludedServices: _q.excludedServices.where((s) => s != service).toList(),
+          excludedServices: _q.excludedServices
+              .where((s) => s != service)
+              .toList(),
         ),
       );
     }
@@ -345,6 +390,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       context,
       knownServices: _knownServices.toList()..sort(),
       knownKeys: _knownKeys.toList()..sort(),
+      knownValues: {
+        for (final entry in _knownValues.entries)
+          entry.key: entry.value.toList()..sort(),
+      },
     );
     switch (choice) {
       case ServiceChoice c:
@@ -412,8 +461,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             projectId: widget.projectId,
             selected: _q.services.length == 1 ? _q.services.first : null,
             discovered: _knownServices,
-            onSelect: (name) =>
-                _setQuery(_q.copyWith(services: name == null ? const [] : [name], excludedServices: const [])),
+            onSelect: (name) => _setQuery(
+              _q.copyWith(
+                services: name == null ? const [] : [name],
+                excludedServices: const [],
+              ),
+            ),
           ),
           _activeFilters(),
           if (showChart) _chartCard(wide),
@@ -425,7 +478,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             child: switch (_view) {
               // Compact rows when the table itself is narrow (small window,
               // detail panel open), while the page keeps its desktop layout.
-              _View.logs => LayoutBuilder(builder: (context, c) => _results(wide && c.maxWidth >= 620)),
+              _View.logs => LayoutBuilder(
+                builder: (context, c) => _results(wide && c.maxWidth >= 620),
+              ),
               _View.patterns => _patterns(),
               _View.groups => _groups(),
             },
@@ -439,7 +494,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ...header,
-                SizedBox(height: math.max(380.0, c.maxHeight - 24), child: table),
+                SizedBox(
+                  height: math.max(380.0, c.maxHeight - 24),
+                  child: table,
+                ),
               ],
             ),
           );
@@ -460,7 +518,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 14, 16, 16),
           child: SizedBox(
-            width: (MediaQuery.sizeOf(context).width * 0.42).clamp(340.0, 520.0),
+            width: (MediaQuery.sizeOf(context).width * 0.42).clamp(
+              340.0,
+              520.0,
+            ),
             child: GlassPanel(
               radius: 22,
               strength: 1.3,
@@ -504,7 +565,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         ),
       ),
     );
-    final updated = _lastLiveUpdate == null ? '' : ' · checked ${DateFormat.Hms().format(_lastLiveUpdate!)}';
+    final updated = _lastLiveUpdate == null
+        ? ''
+        : ' · checked ${DateFormat.Hms().format(_lastLiveUpdate!)}';
     final liveButton = Tooltip(
       message: !_q.range.isRelative
           ? 'Switch to the last hour and show new logs as they arrive'
@@ -513,7 +576,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
           : 'Paused. Tap to resume live updates.',
       child: FilterChip(
         avatar: _LiveDot(active: _liveOn),
-        label: Text(_liveOn ? 'Live' : (_q.range.isRelative ? 'Paused' : 'Live')),
+        label: Text(
+          _liveOn ? 'Live' : (_q.range.isRelative ? 'Paused' : 'Live'),
+        ),
         selected: _liveOn,
         showCheckmark: false,
         visualDensity: const VisualDensity(vertical: -1),
@@ -537,7 +602,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         style: OutlinedButton.styleFrom(
           minimumSize: const Size(0, 36),
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       ),
       liveButton,
@@ -545,7 +612,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     final actions = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded), onPressed: _reload),
+        IconButton(
+          tooltip: 'Refresh',
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: _reload,
+        ),
         _moreMenu(),
       ],
     );
@@ -598,7 +669,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   /// Logs / Patterns / Group by switch.
   Widget _viewSwitch(bool compact) => SegmentedButton<_View>(
     showSelectedIcon: false,
-    style: const ButtonStyle(visualDensity: VisualDensity(horizontal: -2, vertical: -3)),
+    style: const ButtonStyle(
+      visualDensity: VisualDensity(horizontal: -2, vertical: -3),
+    ),
     segments: [
       ButtonSegment(
         value: _View.logs,
@@ -633,9 +706,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       minWidth: 250,
       maxHeight: 460,
       entries: () {
-        final views = ref.read(savedViewsProvider(widget.projectId)).value ?? const <SavedView>[];
+        final views =
+            ref.read(savedViewsProvider(widget.projectId)).value ??
+            const <SavedView>[];
         final uid = ref.read(userProvider).value?.uid;
-        final isAdmin = ref.read(myRoleProvider(widget.projectId))?.canManageKeys ?? false;
+        final isAdmin =
+            ref.read(myRoleProvider(widget.projectId))?.canManageKeys ?? false;
         final chartOn = _chartVisible ?? true;
         return [
           MenuEntry<Object>(
@@ -654,19 +730,39 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             MenuEntry<Object>(
               v,
               v.name,
-              icon: v.query == currentQuery ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+              icon: v.query == currentQuery
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_border_rounded,
               section: 'Saved views',
               action: v.createdBy == uid || isAdmin
                   ? MenuRowAction(Icons.close_rounded, 'Delete view', () {
                       Navigator.of(context).pop();
-                      ref.read(insightsRepositoryProvider).deleteView(widget.projectId, v.id).catchError((Object e) {
-                        if (mounted) showMessage(context, friendlyError(e), error: true);
-                      });
+                      ref
+                          .read(insightsRepositoryProvider)
+                          .deleteView(widget.projectId, v.id)
+                          .catchError((Object e) {
+                            if (mounted)
+                              showMessage(
+                                context,
+                                friendlyError(e),
+                                error: true,
+                              );
+                          });
                     })
                   : null,
             ),
-          const MenuEntry<Object>('_txt', 'Export as .txt', icon: Icons.description_outlined, section: 'Export'),
-          const MenuEntry<Object>('_csv', 'Export as .csv', icon: Icons.table_chart_outlined, section: 'Export'),
+          const MenuEntry<Object>(
+            '_txt',
+            'Export as .txt',
+            icon: Icons.description_outlined,
+            section: 'Export',
+          ),
+          const MenuEntry<Object>(
+            '_csv',
+            'Export as .csv',
+            icon: Icons.table_chart_outlined,
+            section: 'Export',
+          ),
         ];
       },
       onSelected: (v) {
@@ -688,10 +784,15 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: open ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12) : null,
+          color: open
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
+              : null,
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(Icons.more_horiz_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        child: Icon(
+          Icons.more_horiz_rounded,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
@@ -710,7 +811,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     final user = ref.read(userProvider).value;
     if (name == null || user == null) return;
     try {
-      await ref.read(insightsRepositoryProvider).saveView(widget.projectId, user, name, currentQuery);
+      await ref
+          .read(insightsRepositoryProvider)
+          .saveView(widget.projectId, user, name, currentQuery);
       if (mounted) showMessage(context, 'View “$name” saved');
     } catch (e) {
       if (mounted) showMessage(context, friendlyError(e), error: true);
@@ -722,17 +825,27 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       for (final s in _q.services)
         InputChip(
           label: Text('service.name = $s'),
-          onDeleted: () => _setQuery(_q.copyWith(services: _q.services.where((x) => x != s).toList())),
+          onDeleted: () => _setQuery(
+            _q.copyWith(services: _q.services.where((x) => x != s).toList()),
+          ),
         ),
       for (final s in _q.excludedServices)
         InputChip(
           label: Text('service.name ≠ $s'),
-          onDeleted: () => _setQuery(_q.copyWith(excludedServices: _q.excludedServices.where((x) => x != s).toList())),
+          onDeleted: () => _setQuery(
+            _q.copyWith(
+              excludedServices: _q.excludedServices
+                  .where((x) => x != s)
+                  .toList(),
+            ),
+          ),
         ),
       for (final f in _q.filters)
         InputChip(
           label: Text(f.label),
-          onDeleted: () => _setQuery(_q.copyWith(filters: _q.filters.where((x) => x != f).toList())),
+          onDeleted: () => _setQuery(
+            _q.copyWith(filters: _q.filters.where((x) => x != f).toList()),
+          ),
         ),
     ];
     return Padding(
@@ -751,7 +864,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                 children: [
                   ...chips,
                   if (_q.hasFilters)
-                    TextButton(onPressed: () => _setQuery(_q.cleared()), child: const Text('Clear all')),
+                    TextButton(
+                      onPressed: () => _setQuery(_q.cleared()),
+                      child: const Text('Clear all'),
+                    ),
                 ],
               ),
             ),
@@ -774,7 +890,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         ),
       );
     } else if (_volume == null) {
-      body = const Center(child: SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2)));
+      body = const Center(
+        child: SizedBox.square(
+          dimension: 22,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
     } else {
       body = VolumeChart(
         buckets: _volume!,
@@ -797,7 +918,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
-                    total == null ? 'Log volume' : '${NumberFormat.decimalPattern().format(total)} logs',
+                    total == null
+                        ? 'Log volume'
+                        : '${NumberFormat.decimalPattern().format(total)} logs',
                     style: theme.textTheme.titleSmall,
                   ),
                   if (_totals != null)
@@ -809,7 +932,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                             Container(
                               width: 8,
                               height: 8,
-                              decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
+                              decoration: BoxDecoration(
+                                color: s.color,
+                                shape: BoxShape.circle,
+                              ),
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -823,7 +949,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                       message:
                           'Counts include time range, service, level and the first search word. '
                           'Other filters only apply to the list below.',
-                      child: Icon(Icons.info_outline, size: 16, color: theme.colorScheme.outline),
+                      child: Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: theme.colorScheme.outline,
+                      ),
                     ),
                 ],
               ),
@@ -837,8 +967,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   Widget _results(bool wide) {
-    if (_loading && _logs.isEmpty) return const Center(child: CircularProgressIndicator());
-    if (_error != null && _logs.isEmpty) return ErrorView(_error!, onRetry: _reload);
+    if (_loading && _logs.isEmpty)
+      return const Center(child: CircularProgressIndicator());
+    if (_error != null && _logs.isEmpty)
+      return ErrorView(_error!, onRetry: _reload);
     if (_logs.isEmpty) {
       return EmptyState(
         icon: Icons.inbox_outlined,
@@ -868,7 +1000,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
             ),
             child: DefaultTextStyle.merge(
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurfaceVariant,
+              ),
               child: const Row(
                 children: [
                   SizedBox(width: 170, child: Text('TIMESTAMP')),
@@ -891,7 +1027,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               itemBuilder: (context, i) {
                 if (i == _logs.length) return _footer();
                 final log = _logs[i];
-                return _LogRow(log: log, wide: wide, selected: _selected?.id == log.id, onTap: () => _select(log));
+                return _LogRow(
+                  log: log,
+                  wide: wide,
+                  selected: _selected?.id == log.id,
+                  onTap: () => _select(log),
+                );
               },
             ),
           ),
@@ -902,11 +1043,15 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 
   /// Logs grouped into message patterns (from the logs loaded so far).
   Widget _patterns() {
-    if (_loading && _logs.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (_loading && _logs.isEmpty)
+      return const Center(child: CircularProgressIndicator());
     final groups = groupPatterns(_logs);
     final theme = Theme.of(context);
     if (groups.isEmpty) {
-      return const EmptyState(icon: Icons.auto_awesome_motion_outlined, title: 'No patterns yet');
+      return const EmptyState(
+        icon: Icons.auto_awesome_motion_outlined,
+        title: 'No patterns yet',
+      );
     }
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -920,13 +1065,17 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               children: [
                 Text(
                   '${groups.length} patterns from ${_logs.length} loaded logs',
-                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
                 ),
                 if (_hasMore) ...[
                   const SizedBox(height: 8),
                   OutlinedButton(
                     onPressed: _loadingMore ? null : _loadMore,
-                    child: Text(_loadingMore ? 'Loading…' : 'Analyze more logs'),
+                    child: Text(
+                      _loadingMore ? 'Loading…' : 'Analyze more logs',
+                    ),
                   ),
                 ],
               ],
@@ -952,7 +1101,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                       Text('${g.count}', style: theme.textTheme.titleMedium),
                       Text(
                         '${(share * 100).toStringAsFixed(share < 0.1 ? 1 : 0)}%',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.outline,
+                        ),
                       ),
                     ],
                   ),
@@ -972,7 +1123,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                       const SizedBox(height: 3),
                       Text(
                         '${g.services.join(', ')} · last ${timeAgo(g.lastSeen)}',
-                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -987,13 +1140,23 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   /// Group-by keys offered in the picker: built-in fields, then attributes seen.
-  static const _builtinGroupKeys = ['service.name', 'severity', 'userId', 'sessionId', 'pattern'];
+  static const _builtinGroupKeys = [
+    'service.name',
+    'severity',
+    'userId',
+    'sessionId',
+    'pattern',
+  ];
 
-  List<String> get _groupKeys => [..._builtinGroupKeys, ...(_knownKeys.toList()..sort())];
+  List<String> get _groupKeys => [
+    ..._builtinGroupKeys,
+    ...(_knownKeys.toList()..sort()),
+  ];
 
   /// Logs grouped by the values of one field or attribute.
   Widget _groups() {
-    if (_loading && _logs.isEmpty) return const Center(child: CircularProgressIndicator());
+    if (_loading && _logs.isEmpty)
+      return const Center(child: CircularProgressIndicator());
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final groups = groupByField(_logs, _groupKey);
@@ -1018,13 +1181,19 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             onCustom: (q) => q,
             customLabel: 'Group by',
             entries: () => [
-              for (final k in _builtinGroupKeys) MenuEntry(k, k, mono: true, section: 'Fields'),
+              for (final k in _builtinGroupKeys)
+                MenuEntry(k, k, mono: true, section: 'Fields'),
               for (final k in keys.where((k) => !_builtinGroupKeys.contains(k)))
                 MenuEntry(k, k, mono: true, section: 'Attributes'),
             ],
             onSelected: (k) => setState(() => _groupKey = k),
-            builder: (context, open) =>
-                MenuPill(icon: Icons.workspaces_outline, label: _groupKey, mono: true, active: true, open: open),
+            builder: (context, open) => MenuPill(
+              icon: Icons.workspaces_outline,
+              label: _groupKey,
+              mono: true,
+              active: true,
+              open: open,
+            ),
           ),
           Text(
             '${groups.length} values · ${_logs.length} loaded logs',
@@ -1041,7 +1210,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         const Divider(),
         Expanded(
           child: groups.isEmpty
-              ? const EmptyState(icon: Icons.workspaces_outline, title: 'No logs to group')
+              ? const EmptyState(
+                  icon: Icons.workspaces_outline,
+                  title: 'No logs to group',
+                )
               : ListView.separated(
                   itemCount: groups.length + 1,
                   separatorBuilder: (_, _) => const Divider(),
@@ -1053,9 +1225,16 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                           child: _hasMore
                               ? OutlinedButton(
                                   onPressed: _loadingMore ? null : _loadMore,
-                                  child: Text(_loadingMore ? 'Loading…' : 'Include more logs'),
+                                  child: Text(
+                                    _loadingMore
+                                        ? 'Loading…'
+                                        : 'Include more logs',
+                                  ),
                                 )
-                              : Text('All matching logs included', style: theme.textTheme.bodySmall),
+                              : Text(
+                                  'All matching logs included',
+                                  style: theme.textTheme.bodySmall,
+                                ),
                         ),
                       );
                     }
@@ -1068,14 +1247,19 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                           g.value == null
                               ? AttrFilter(_groupKey, FilterOp.notExists)
                               : AttrFilter(
-                                  _groupKey == 'service.name' ? 'service' : _groupKey,
+                                  _groupKey == 'service.name'
+                                      ? 'service'
+                                      : _groupKey,
                                   FilterOp.equals,
                                   g.value!,
                                 ),
                         );
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         child: Row(
                           children: [
                             Expanded(
@@ -1089,7 +1273,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                                     style: monoStyle.copyWith(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
-                                      color: g.value == null ? scheme.outline : null,
+                                      color: g.value == null
+                                          ? scheme.outline
+                                          : null,
                                     ),
                                   ),
                                   const SizedBox(height: 6),
@@ -1106,18 +1292,25 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                                     [
                                       '${(share * 100).toStringAsFixed(share < 0.1 ? 1 : 0)}%',
                                       if (g.errors > 0) '${g.errors} errors',
-                                      if (g.users.isNotEmpty && _groupKey != 'userId') '${g.users.length} users',
+                                      if (g.users.isNotEmpty &&
+                                          _groupKey != 'userId')
+                                        '${g.users.length} users',
                                       'last ${timeAgo(g.lastSeen)}',
                                     ].join(' · '),
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: g.errors > 0 ? Severity.error.color : scheme.onSurfaceVariant,
+                                      color: g.errors > 0
+                                          ? Severity.error.color
+                                          : scheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
                             const SizedBox(width: 16),
-                            Text('${g.count}', style: theme.textTheme.titleMedium),
+                            Text(
+                              '${g.count}',
+                              style: theme.textTheme.titleMedium,
+                            ),
                             const Icon(Icons.chevron_right),
                           ],
                         ),
@@ -1131,13 +1324,19 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   Widget _footer() {
-    final style = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline);
+    final style = TextStyle(
+      fontSize: 12,
+      color: Theme.of(context).colorScheme.outline,
+    );
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           if (_loadingMore)
-            const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+            const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
           else if (_hasMore)
             OutlinedButton(onPressed: _loadMore, child: const Text('Load more'))
           else
@@ -1151,7 +1350,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 }
 
 class _LogRow extends StatelessWidget {
-  const _LogRow({required this.log, required this.wide, required this.selected, required this.onTap});
+  const _LogRow({
+    required this.log,
+    required this.wide,
+    required this.selected,
+    required this.onTap,
+  });
 
   final LogEntry log;
   final bool wide;
@@ -1169,18 +1373,27 @@ class _LogRow extends StatelessWidget {
             children: [
               SizedBox(
                 width: 170,
-                child: Text(_wideFmt.format(log.timestamp), style: monoStyle.copyWith(fontSize: 12)),
+                child: Text(
+                  _wideFmt.format(log.timestamp),
+                  style: monoStyle.copyWith(fontSize: 12),
+                ),
               ),
               SizedBox(
                 width: 82,
-                child: Align(alignment: Alignment.centerLeft, child: SeverityBadge(log.severity)),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SeverityBadge(log.severity),
+                ),
               ),
               SizedBox(
                 width: 150,
                 child: Text(
                   log.service,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               Expanded(
@@ -1200,14 +1413,20 @@ class _LogRow extends StatelessWidget {
                 children: [
                   SeverityBadge(log.severity, compact: true),
                   const SizedBox(width: 8),
-                  Text(_narrowFmt.format(log.timestamp), style: monoStyle.copyWith(fontSize: 11.5)),
+                  Text(
+                    _narrowFmt.format(log.timestamp),
+                    style: monoStyle.copyWith(fontSize: 11.5),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       log.service,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.right,
-                      style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
@@ -1222,15 +1441,22 @@ class _LogRow extends StatelessWidget {
             ],
           );
     return Material(
-      color: selected ? scheme.secondaryContainer.withValues(alpha: 0.6) : Colors.transparent,
+      color: selected
+          ? scheme.secondaryContainer.withValues(alpha: 0.6)
+          : Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: wide ? 7 : 10),
+          padding: EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: wide ? 7 : 10,
+          ),
           decoration: BoxDecoration(
             border: Border(
               left: BorderSide(color: log.severity.color, width: 3),
-              bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
+              bottom: BorderSide(
+                color: scheme.outlineVariant.withValues(alpha: 0.6),
+              ),
             ),
           ),
           child: row,
@@ -1256,12 +1482,17 @@ class _ServiceBar extends ConsumerWidget {
 
   static IconData iconFor(String name) {
     final n = name.toLowerCase();
-    if (n.contains('ios') || n.contains('iphone') || n.contains('ipad')) return Icons.phone_iphone;
+    if (n.contains('ios') || n.contains('iphone') || n.contains('ipad'))
+      return Icons.phone_iphone;
     if (n.contains('android')) return Icons.android;
     if (n.contains('mac')) return Icons.laptop_mac;
-    if (n.contains('windows') || n.contains('win')) return Icons.desktop_windows_outlined;
+    if (n.contains('windows') || n.contains('win'))
+      return Icons.desktop_windows_outlined;
     if (n.contains('web') || n.contains('site')) return Icons.language;
-    if (n.contains('server') || n.contains('backend') || n.contains('api') || n.contains('worker')) {
+    if (n.contains('server') ||
+        n.contains('backend') ||
+        n.contains('api') ||
+        n.contains('worker')) {
       return Icons.dns_outlined;
     }
     return Icons.apps;
@@ -1269,9 +1500,13 @@ class _ServiceBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final registry = ref.watch(servicesProvider(projectId)).value ?? const <ServiceInfo>[];
-    final names = {...registry.map((s) => s.name), ...discovered, ?selected}.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final registry =
+        ref.watch(servicesProvider(projectId)).value ?? const <ServiceInfo>[];
+    final names = {
+      ...registry.map((s) => s.name),
+      ...discovered,
+      ?selected,
+    }.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     if (names.isEmpty) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
 
@@ -1280,8 +1515,14 @@ class _ServiceBar extends ConsumerWidget {
       return Padding(
         padding: const EdgeInsets.only(right: 8),
         child: Material(
-          color: isSel ? scheme.primary : scheme.surface.withValues(alpha: 0.45),
-          shape: StadiumBorder(side: BorderSide(color: isSel ? scheme.primary : scheme.outlineVariant)),
+          color: isSel
+              ? scheme.primary
+              : scheme.surface.withValues(alpha: 0.45),
+          shape: StadiumBorder(
+            side: BorderSide(
+              color: isSel ? scheme.primary : scheme.outlineVariant,
+            ),
+          ),
           child: InkWell(
             customBorder: const StadiumBorder(),
             onTap: () => onSelect(isSel ? null : name),
@@ -1333,8 +1574,12 @@ class _LiveDot extends StatefulWidget {
   State<_LiveDot> createState() => _LiveDotState();
 }
 
-class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+class _LiveDotState extends State<_LiveDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
 
   @override
   void initState() {
@@ -1358,10 +1603,15 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
   @override
   Widget build(BuildContext context) {
     final off = Theme.of(context).colorScheme.outline;
-    if (!widget.active) return Icon(Icons.pause_circle_outline, size: 14, color: off);
+    if (!widget.active)
+      return Icon(Icons.pause_circle_outline, size: 14, color: off);
     return FadeTransition(
       opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
-      child: const Icon(Icons.fiber_manual_record, size: 12, color: Colors.redAccent),
+      child: const Icon(
+        Icons.fiber_manual_record,
+        size: 12,
+        color: Colors.redAccent,
+      ),
     );
   }
 }

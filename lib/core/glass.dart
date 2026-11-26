@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import 'theme.dart';
+
 /// iOS-style "glass" surfaces: a frosted blur of what's behind, a light tint,
 /// a thin bright edge and a soft highlight from the top-left.
 ///
@@ -19,22 +21,35 @@ class AppBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = _dark(context);
+    final compact = MediaQuery.sizeOf(context).width < 700;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: dark
-              ? const [Color(0xFF0A0C1B), Color(0xFF110E2B), Color(0xFF0B1424)]
-              : const [Color(0xFFEFF2FF), Color(0xFFF6F2FF), Color(0xFFEFF8FB)],
+              ? (compact
+                    ? const [Color(0xFF10131E), Color(0xFF111522), Color(0xFF0E1720)]
+                    : const [Color(0xFF0A0C1B), Color(0xFF110E2B), Color(0xFF0B1424)])
+              : (compact
+                    ? const [Color(0xFFF5F6FA), Color(0xFFF1F3F8), Color(0xFFF6F7FA)]
+                    : const [Color(0xFFEFF2FF), Color(0xFFF6F2FF), Color(0xFFEFF8FB)]),
         ),
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
-          _Glow(alignment: const Alignment(-1.1, -1.0), color: const Color(0xFF4C6EF5), size: 620, dark: dark),
-          _Glow(alignment: const Alignment(1.15, -0.35), color: const Color(0xFF9C36B5), size: 520, dark: dark),
-          _Glow(alignment: const Alignment(0.2, 1.25), color: const Color(0xFF20C997), size: 560, dark: dark),
+          Opacity(
+            opacity: compact ? 0.28 : 1,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _Glow(alignment: const Alignment(-1.1, -1.0), color: const Color(0xFF4C6EF5), size: 620, dark: dark),
+                _Glow(alignment: const Alignment(1.15, -0.35), color: const Color(0xFF9C36B5), size: 520, dark: dark),
+                _Glow(alignment: const Alignment(0.2, 1.25), color: const Color(0xFF20C997), size: 560, dark: dark),
+              ],
+            ),
+          ),
           child,
         ],
       ),
@@ -99,15 +114,20 @@ class GlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = _dark(context);
+    final mobile = isMobileLayout(context);
     final r = BorderRadius.circular(radius);
     final tint = dark
-        ? Colors.white.withValues(alpha: (0.07 * strength).clamp(0, 1))
-        : Colors.white.withValues(alpha: (0.58 * strength).clamp(0, 1));
-    final edge = borderColor ?? (dark ? Colors.white.withValues(alpha: 0.14) : Colors.white.withValues(alpha: 0.85));
+        ? Colors.white.withValues(alpha: ((mobile ? 0.09 : 0.07) * strength).clamp(0, 1))
+        : Colors.white.withValues(alpha: ((mobile ? 0.90 : 0.58) * strength).clamp(0, 1));
+    final edge =
+        borderColor ??
+        (dark
+            ? Colors.white.withValues(alpha: mobile ? 0.10 : 0.14)
+            : Colors.white.withValues(alpha: mobile ? 0.96 : 0.85));
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: r,
-        boxShadow: shadow
+        boxShadow: shadow && !mobile
             ? [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: dark ? 0.35 : 0.07),
@@ -119,29 +139,60 @@ class GlassPanel extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: r,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: tint,
-              borderRadius: r,
-              border: Border.all(color: edge, width: 1),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: dark ? 0.10 : 0.45),
-                  Colors.white.withValues(alpha: 0),
-                ],
-                stops: const [0, 0.55],
+        child: mobile
+            ? _GlassSurface(
+                tint: tint,
+                edge: edge,
+                dark: dark,
+                radius: radius,
+                child: padding == null ? child : Padding(padding: padding!, child: child),
+              )
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                child: _GlassSurface(
+                  tint: tint,
+                  edge: edge,
+                  dark: dark,
+                  radius: radius,
+                  child: padding == null ? child : Padding(padding: padding!, child: child),
+                ),
               ),
-            ),
-            child: padding == null ? child : Padding(padding: padding!, child: child),
-          ),
-        ),
       ),
     );
   }
+}
+
+class _GlassSurface extends StatelessWidget {
+  const _GlassSurface({
+    required this.tint,
+    required this.edge,
+    required this.dark,
+    required this.radius,
+    required this.child,
+  });
+
+  final Color tint;
+  final Color edge;
+  final bool dark;
+  final double radius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      DecoratedBox(
+        decoration: BoxDecoration(
+          color: tint,
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: edge, width: 1),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white.withValues(alpha: dark ? 0.06 : 0.22), Colors.white.withValues(alpha: 0)],
+            stops: const [0, 0.55],
+          ),
+        ),
+        child: child,
+      );
 }
 
 /// Drop-in replacement for [Card] using glass.

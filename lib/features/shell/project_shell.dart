@@ -26,12 +26,22 @@ const _sectionStarts = {0: 'Analyze', 6: 'Configure'};
 const _phoneTabs = 4;
 
 const _items = [
-  _NavItem('overview', 'Overview', Icons.space_dashboard_outlined, Icons.space_dashboard),
+  _NavItem(
+    'overview',
+    'Overview',
+    Icons.space_dashboard_outlined,
+    Icons.space_dashboard,
+  ),
   _NavItem('activity', 'Activity', Icons.bolt_outlined, Icons.bolt),
   _NavItem('logs', 'Logs', Icons.receipt_long_outlined, Icons.receipt_long),
   _NavItem('issues', 'Issues', Icons.bug_report_outlined, Icons.bug_report),
   _NavItem('people', 'People', Icons.people_outline, Icons.people),
-  _NavItem('alerts', 'Alerts', Icons.notifications_outlined, Icons.notifications),
+  _NavItem(
+    'alerts',
+    'Alerts',
+    Icons.notifications_outlined,
+    Icons.notifications,
+  ),
   _NavItem('data', 'Data management', Icons.dataset_outlined, Icons.dataset),
   _NavItem('keys', 'Ingest keys', Icons.key_outlined, Icons.key),
   _NavItem('members', 'Members', Icons.group_outlined, Icons.group),
@@ -41,7 +51,12 @@ const _items = [
 /// Navigation around a project's pages: a sidebar on wide screens and a
 /// bottom bar on phones.
 class ProjectShell extends ConsumerStatefulWidget {
-  const ProjectShell({super.key, required this.projectId, required this.location, required this.child});
+  const ProjectShell({
+    super.key,
+    required this.projectId,
+    required this.location,
+    required this.child,
+  });
 
   final String projectId;
   final String location;
@@ -65,7 +80,8 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
     super.didUpdateWidget(old);
     if (old.projectId != widget.projectId) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) ref.read(lastProjectProvider.notifier).set(widget.projectId);
+        if (mounted)
+          ref.read(lastProjectProvider.notifier).set(widget.projectId);
       });
     }
   }
@@ -83,29 +99,44 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = _phoneTabs; i < _items.length; i++)
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+                child: Text(
+                  'Project tools',
+                  style: Theme.of(ctx).textTheme.titleMedium,
+                ),
+              ),
+              for (var i = _phoneTabs; i < _items.length; i++)
+                ListTile(
+                  leading: Icon(
+                    i == _index ? _items[i].selectedIcon : _items[i].icon,
+                    color: i == _index
+                        ? Theme.of(ctx).colorScheme.primary
+                        : null,
+                  ),
+                  title: Text(_items[i].label),
+                  selected: i == _index,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _go(i);
+                  },
+                ),
               ListTile(
-                leading: Icon(i == _index ? _items[i].selectedIcon : _items[i].icon),
-                title: Text(_items[i].label),
-                selected: i == _index,
+                leading: const Icon(Icons.account_circle_outlined),
+                title: const Text('Account'),
                 onTap: () {
                   Navigator.pop(ctx);
-                  _go(i);
+                  context.push('/account');
                 },
               ),
-            ListTile(
-              leading: const Icon(Icons.account_circle_outlined),
-              title: const Text('Account'),
-              onTap: () {
-                Navigator.pop(ctx);
-                context.push('/account');
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -115,7 +146,8 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
   Widget build(BuildContext context) {
     final project = ref.watch(projectProvider(widget.projectId));
     return project.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, _) => Scaffold(body: _NoAccess(error: e)),
       data: (p) {
         if (p == null) return const Scaffold(body: _NoAccess());
@@ -153,14 +185,24 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                           SizedBox(
                             height: 64,
                             child: Padding(
-                              padding: EdgeInsets.symmetric(horizontal: rail ? 0 : 16),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: rail ? 0 : 16,
+                              ),
                               child: rail
                                   ? Center(
                                       child: _IconToggle(
                                         tooltip: 'Expand sidebar',
-                                        icon: Icons.keyboard_double_arrow_right_rounded,
-                                        onTap: () => ref.read(sidebarCollapsedProvider.notifier).set(false),
-                                        child: const AppLogo(size: 26, showName: false),
+                                        icon: Icons
+                                            .keyboard_double_arrow_right_rounded,
+                                        onTap: () => ref
+                                            .read(
+                                              sidebarCollapsedProvider.notifier,
+                                            )
+                                            .set(false),
+                                        child: const AppLogo(
+                                          size: 26,
+                                          showName: false,
+                                        ),
                                       ),
                                     )
                                   : Row(
@@ -169,8 +211,14 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                                         const Spacer(),
                                         _IconToggle(
                                           tooltip: 'Collapse sidebar',
-                                          icon: Icons.keyboard_double_arrow_left_rounded,
-                                          onTap: () => ref.read(sidebarCollapsedProvider.notifier).set(true),
+                                          icon: Icons
+                                              .keyboard_double_arrow_left_rounded,
+                                          onTap: () => ref
+                                              .read(
+                                                sidebarCollapsedProvider
+                                                    .notifier,
+                                              )
+                                              .set(true),
                                         ),
                                       ],
                                     ),
@@ -187,9 +235,16 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                               children: [
                                 for (var i = 0; i < _items.length; i++) ...[
                                   if (_sectionStarts.containsKey(i))
-                                    _NavSection(_sectionStarts[i]!, collapsed: rail, first: i == 0),
+                                    _NavSection(
+                                      _sectionStarts[i]!,
+                                      collapsed: rail,
+                                      first: i == 0,
+                                    ),
                                   Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 1),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: hPad,
+                                      vertical: 1,
+                                    ),
                                     child: _SideNavTile(
                                       item: _items[i],
                                       selected: i == _index,
@@ -223,32 +278,139 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
   Widget _narrow(Project p) {
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 8,
-        flexibleSpace: const GlassPanel(radius: 0, shadow: false, strength: 0.8, child: SizedBox.expand()),
+        titleSpacing: 16,
+        toolbarHeight: 64,
+        flexibleSpace: const GlassPanel(
+          radius: 0,
+          shadow: false,
+          strength: 1,
+          child: SizedBox.expand(),
+        ),
         title: _ProjectSwitcher(current: p, compact: true),
         actions: [
-          IconButton(
-            tooltip: 'Account',
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () => context.push('/account'),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton.filledTonal(
+              tooltip: 'Account',
+              icon: const Icon(Icons.person_outline_rounded),
+              onPressed: () => context.push('/account'),
+            ),
           ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       body: widget.child,
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 8),
         child: GlassPanel(
-          radius: 26,
-          strength: 1.2,
-          child: NavigationBar(
-            selectedIndex: _index < _phoneTabs ? _index : _phoneTabs,
-            onDestinationSelected: (i) => i < _phoneTabs ? _go(i) : _showMore(),
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            destinations: [
-              for (final item in _items.take(_phoneTabs))
-                NavigationDestination(icon: Icon(item.icon), selectedIcon: Icon(item.selectedIcon), label: item.label),
-              const NavigationDestination(icon: Icon(Icons.more_horiz), label: 'More'),
-            ],
+          radius: 22,
+          strength: 1.05,
+          shadow: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(6, 7, 6, 5),
+            child: Row(
+              children: [
+                for (var i = 0; i < _phoneTabs; i++)
+                  Expanded(
+                    child: _MobileNavDestination(
+                      label: _items[i].label,
+                      icon: _items[i].icon,
+                      selectedIcon: _items[i].selectedIcon,
+                      selected: _index == i,
+                      onTap: () => _go(i),
+                    ),
+                  ),
+                Expanded(
+                  child: _MobileNavDestination(
+                    label: 'More',
+                    icon: Icons.more_horiz_rounded,
+                    selectedIcon: Icons.more_horiz_rounded,
+                    selected: _index >= _phoneTabs,
+                    onTap: _showMore,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileNavDestination extends StatelessWidget {
+  const _MobileNavDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: onTap,
+            child: SizedBox(
+              height: 58,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    width: 42,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? scheme.primary.withValues(alpha: 0.14)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      selected ? selectedIcon : icon,
+                      size: 20,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontSize: 10,
+                      height: 1.15,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      color: color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -257,7 +419,12 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
 }
 
 class _SideNavTile extends StatefulWidget {
-  const _SideNavTile({required this.item, required this.selected, required this.onTap, this.collapsed = false});
+  const _SideNavTile({
+    required this.item,
+    required this.selected,
+    required this.onTap,
+    this.collapsed = false,
+  });
 
   final _NavItem item;
   final bool selected;
@@ -278,12 +445,20 @@ class _SideNavTileState extends State<_SideNavTile> {
     final dark = theme.brightness == Brightness.dark;
     final selected = widget.selected;
     final hover = _hover && !selected;
-    final fg = selected ? scheme.primary : (hover ? scheme.onSurface : scheme.onSurfaceVariant);
+    final fg = selected
+        ? scheme.primary
+        : (hover ? scheme.onSurface : scheme.onSurfaceVariant);
     // Active: tinted fill + accent bar. Hover: a faint neutral wash only.
     final bg = selected
         ? scheme.primary.withValues(alpha: dark ? 0.16 : 0.10)
-        : (hover ? scheme.onSurface.withValues(alpha: dark ? 0.05 : 0.04) : Colors.transparent);
-    final icon = Icon(selected ? widget.item.selectedIcon : widget.item.icon, size: 18, color: fg);
+        : (hover
+              ? scheme.onSurface.withValues(alpha: dark ? 0.05 : 0.04)
+              : Colors.transparent);
+    final icon = Icon(
+      selected ? widget.item.selectedIcon : widget.item.icon,
+      size: 18,
+      color: fg,
+    );
 
     final tile = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -299,7 +474,10 @@ class _SideNavTileState extends State<_SideNavTile> {
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           height: 36,
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10),
+          ),
           child: Stack(
             alignment: Alignment.centerLeft,
             children: [
@@ -312,13 +490,17 @@ class _SideNavTileState extends State<_SideNavTile> {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: Brand.accent(theme.brightness),
-                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
+                      borderRadius: const BorderRadius.horizontal(
+                        right: Radius.circular(3),
+                      ),
                     ),
                   ),
                 ),
               Positioned.fill(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: widget.collapsed ? 0 : 12,
+                  ),
                   child: widget.collapsed
                       ? Center(child: icon)
                       : Row(
@@ -334,10 +516,16 @@ class _SideNavTileState extends State<_SideNavTile> {
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   fontSize: 13.5,
                                   height: 1.2,
-                                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                                  fontWeight: selected
+                                      ? FontWeight.w600
+                                      : FontWeight.w500,
                                   color: selected
                                       ? scheme.primary
-                                      : (hover ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.82)),
+                                      : (hover
+                                            ? scheme.onSurface
+                                            : scheme.onSurface.withValues(
+                                                alpha: 0.82,
+                                              )),
                                 ),
                               ),
                             ),
@@ -350,14 +538,21 @@ class _SideNavTileState extends State<_SideNavTile> {
         ),
       ),
     );
-    return widget.collapsed ? Tooltip(message: widget.item.label, preferBelow: false, child: tile) : tile;
+    return widget.collapsed
+        ? Tooltip(message: widget.item.label, preferBelow: false, child: tile)
+        : tile;
   }
 }
 
 /// Small square icon button (sidebar collapse/expand). With [child], shows
 /// the child and swaps to the icon on hover.
 class _IconToggle extends StatefulWidget {
-  const _IconToggle({required this.tooltip, required this.icon, required this.onTap, this.child});
+  const _IconToggle({
+    required this.tooltip,
+    required this.icon,
+    required this.onTap,
+    this.child,
+  });
 
   final String tooltip;
   final IconData icon;
@@ -388,7 +583,9 @@ class _IconToggleState extends State<_IconToggle> {
             height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: _hover ? scheme.onSurface.withValues(alpha: 0.06) : Colors.transparent,
+              color: _hover
+                  ? scheme.onSurface.withValues(alpha: 0.06)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(9),
             ),
             child: widget.child != null && !_hover
@@ -420,7 +617,9 @@ class _AccountTileState extends ConsumerState<_AccountTile> {
     final scheme = theme.colorScheme;
     final user = ref.watch(userProvider).value;
     final email = user?.email ?? '';
-    final name = (user?.displayName?.trim().isNotEmpty ?? false) ? user!.displayName!.trim() : email.split('@').first;
+    final name = (user?.displayName?.trim().isNotEmpty ?? false)
+        ? user!.displayName!.trim()
+        : email.split('@').first;
     final initial = name.isEmpty ? '?' : name.characters.first.toUpperCase();
     final avatar = Container(
       width: 30,
@@ -433,7 +632,11 @@ class _AccountTileState extends ConsumerState<_AccountTile> {
       ),
       child: Text(
         initial,
-        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: scheme.primary),
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+          color: scheme.primary,
+        ),
       ),
     );
     final tile = MouseRegion(
@@ -448,7 +651,9 @@ class _AccountTileState extends ConsumerState<_AccountTile> {
           height: 46,
           padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 8),
           decoration: BoxDecoration(
-            color: _hover ? scheme.onSurface.withValues(alpha: 0.05) : Colors.transparent,
+            color: _hover
+                ? scheme.onSurface.withValues(alpha: 0.05)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: widget.collapsed
@@ -466,25 +671,36 @@ class _AccountTileState extends ConsumerState<_AccountTile> {
                             name.isEmpty ? 'Account' : name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           if (email.isNotEmpty)
                             Text(
                               email,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 11.5,
+                              ),
                             ),
                         ],
                       ),
                     ),
-                    Icon(Icons.settings_outlined, size: 16, color: scheme.outline),
+                    Icon(
+                      Icons.settings_outlined,
+                      size: 16,
+                      color: scheme.outline,
+                    ),
                   ],
                 ),
         ),
       ),
     );
-    return widget.collapsed ? Tooltip(message: email.isEmpty ? 'Account' : email, child: tile) : tile;
+    return widget.collapsed
+        ? Tooltip(message: email.isEmpty ? 'Account' : email, child: tile)
+        : tile;
   }
 }
 
@@ -501,7 +717,10 @@ class _NavSection extends StatelessWidget {
     if (collapsed) {
       return first
           ? const SizedBox(height: 4)
-          : const Padding(padding: EdgeInsets.symmetric(horizontal: 18, vertical: 10), child: Divider());
+          : const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              child: Divider(),
+            );
     }
     return Padding(
       padding: EdgeInsets.fromLTRB(24, first ? 6 : 18, 16, 6),
@@ -519,7 +738,11 @@ class _NavSection extends StatelessWidget {
 }
 
 class _ProjectSwitcher extends ConsumerWidget {
-  const _ProjectSwitcher({required this.current, this.compact = false, this.iconOnly = false});
+  const _ProjectSwitcher({
+    required this.current,
+    this.compact = false,
+    this.iconOnly = false,
+  });
 
   final Project current;
   final bool compact;
@@ -549,7 +772,12 @@ class _ProjectSwitcher extends ConsumerWidget {
       },
       entries: () => [
         for (final p in projects)
-          MenuEntry(p.id, p.name, leading: _ProjectAvatar(p.name, size: 20), section: 'Projects'),
+          MenuEntry(
+            p.id,
+            p.name,
+            leading: _ProjectAvatar(p.name, size: 20),
+            section: 'Projects',
+          ),
         const MenuEntry('_new', 'New project…', icon: Icons.add_rounded),
         const MenuEntry('_all', 'All projects', icon: Icons.grid_view_rounded),
       ],
@@ -559,16 +787,30 @@ class _ProjectSwitcher extends ConsumerWidget {
 
   Widget _switcherBody(BuildContext context, ColorScheme scheme, bool open) {
     return iconOnly
-        ? SizedBox(height: 44, child: Center(child: _ProjectAvatar(current.name, size: 36)))
+        ? SizedBox(
+            height: 44,
+            child: Center(child: _ProjectAvatar(current.name, size: 36)),
+          )
         : Container(
-            padding: EdgeInsets.fromLTRB(compact ? 4 : 8, compact ? 4 : 8, 8, compact ? 4 : 8),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 4 : 8,
+              compact ? 4 : 8,
+              8,
+              compact ? 4 : 8,
+            ),
             decoration: BoxDecoration(
               color: compact
-                  ? null
-                  : (open ? scheme.primary.withValues(alpha: 0.08) : scheme.surface.withValues(alpha: 0.30)),
+                  ? scheme.surface.withValues(alpha: 0.54)
+                  : (open
+                        ? scheme.primary.withValues(alpha: 0.08)
+                        : scheme.surface.withValues(alpha: 0.30)),
               border: compact
-                  ? null
-                  : Border.all(color: open ? scheme.primary.withValues(alpha: 0.35) : scheme.outlineVariant),
+                  ? Border.all(color: scheme.outlineVariant)
+                  : Border.all(
+                      color: open
+                          ? scheme.primary.withValues(alpha: 0.35)
+                          : scheme.outlineVariant,
+                    ),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -584,20 +826,27 @@ class _ProjectSwitcher extends ConsumerWidget {
                       if (!compact)
                         Text(
                           'Project',
-                          style: Theme.of(
-                            context,
-                          ).textTheme.labelSmall?.copyWith(color: scheme.outline, fontSize: 10.5),
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: scheme.outline, fontSize: 10.5),
                         ),
                       Text(
                         current.name,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: -0.2),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          letterSpacing: -0.2,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 4),
-                Icon(Icons.unfold_more_rounded, size: 18, color: scheme.outline),
+                Icon(
+                  Icons.unfold_more_rounded,
+                  size: 18,
+                  color: scheme.outline,
+                ),
               ],
             ),
           );
@@ -613,7 +862,9 @@ class _ProjectAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initial = name.trim().isEmpty ? '?' : name.trim().characters.first.toUpperCase();
+    final initial = name.trim().isEmpty
+        ? '?'
+        : name.trim().characters.first.toUpperCase();
     return Container(
       width: size,
       height: size,
@@ -621,11 +872,21 @@ class _ProjectAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: Brand.accent(Brightness.light),
         borderRadius: BorderRadius.circular(size * 0.3),
-        boxShadow: [BoxShadow(color: Brand.indigo.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [
+          BoxShadow(
+            color: Brand.indigo.withValues(alpha: 0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Text(
         initial,
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: size * 0.45),
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: size * 0.45,
+        ),
       ),
     );
   }
@@ -641,8 +902,13 @@ class _NoAccess extends StatelessWidget {
     return EmptyState(
       icon: Icons.lock_outline,
       title: 'Project not available',
-      message: error == null ? 'This project doesn’t exist, or you’re no longer a member.' : friendlyError(error!),
-      action: FilledButton(onPressed: () => context.go('/projects'), child: const Text('Go to projects')),
+      message: error == null
+          ? 'This project doesn’t exist, or you’re no longer a member.'
+          : friendlyError(error!),
+      action: FilledButton(
+        onPressed: () => context.go('/projects'),
+        child: const Text('Go to projects'),
+      ),
     );
   }
 }

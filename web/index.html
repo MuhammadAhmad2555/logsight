@@ -17,12 +17,14 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" id="theme-color" content="#10131E">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="LogSight: collect, search and explore logs from all your apps.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="trackapp">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
@@ -31,6 +33,40 @@
 
   <title>LogSight</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; }
+    html { background: #10131E; }
+    body { overflow: hidden; background: transparent; }
+  </style>
+  <script>
+    // Safari paints the areas around the page (status bar, address bar, the
+    // overscroll edges) from theme-color and the page background. Keep both in
+    // step with the app's *chosen* theme, not the phone's system setting.
+    // Flutter calls window.setBrowserChrome(isDark) whenever the theme changes.
+    (function () {
+      var colors = { dark: '#10131E', light: '#F5F6FA' };
+      function apply(dark) {
+        var c = dark ? colors.dark : colors.light;
+        var meta = document.getElementById('theme-color');
+        if (meta) meta.setAttribute('content', c);
+        var root = document.documentElement;
+        root.style.backgroundColor = c;
+        root.style.colorScheme = dark ? 'dark' : 'light';
+      }
+      window.setBrowserChrome = apply;
+
+      // First paint, before Flutter loads: use the saved choice
+      // (shared_preferences stores it in localStorage as "flutter.theme_mode").
+      var mode = 'system';
+      try {
+        var raw = localStorage.getItem('flutter.theme_mode');
+        if (raw) mode = JSON.parse(raw);
+      } catch (e) {}
+      var systemDark = window.matchMedia &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches;
+      apply(mode === 'dark' || (mode !== 'light' && systemDark));
+    })();
+  </script>
 </head>
 <body>
   <!--

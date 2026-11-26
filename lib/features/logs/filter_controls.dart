@@ -2,13 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/app_menu.dart';
+import '../../core/theme.dart';
 
 import '../../core/severity.dart';
 import '../../data/log_query.dart';
 
 /// Picks a relative or custom time range.
 class TimeRangeButton extends StatelessWidget {
-  const TimeRangeButton({super.key, required this.range, required this.onChanged});
+  const TimeRangeButton({
+    super.key,
+    required this.range,
+    required this.onChanged,
+  });
 
   final TimeRange range;
   final ValueChanged<TimeRange> onChanged;
@@ -39,14 +44,28 @@ class TimeRangeButton extends StatelessWidget {
       initialTime: const TimeOfDay(hour: 23, minute: 59),
     );
     if (endTime == null) return;
-    final start = DateTime(picked.start.year, picked.start.month, picked.start.day, startTime.hour, startTime.minute);
-    var end = DateTime(picked.end.year, picked.end.month, picked.end.day, endTime.hour, endTime.minute, 59);
+    final start = DateTime(
+      picked.start.year,
+      picked.start.month,
+      picked.start.day,
+      startTime.hour,
+      startTime.minute,
+    );
+    var end = DateTime(
+      picked.end.year,
+      picked.end.month,
+      picked.end.day,
+      endTime.hour,
+      endTime.minute,
+      59,
+    );
     if (end.isAfter(now)) end = now;
     if (!start.isBefore(end)) return;
     onChanged(TimeRange.absolute(start, end));
   }
 
-  static String _d(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  static String _d(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +75,14 @@ class TimeRangeButton extends StatelessWidget {
       searchable: false,
       minWidth: 210,
       entries: () => [
-        for (final p in RelativePreset.values) MenuEntry<Object>(p, p.label, section: 'Relative'),
-        const MenuEntry<Object>('custom', 'Custom range…', icon: Icons.date_range_outlined, section: 'Absolute'),
+        for (final p in RelativePreset.values)
+          MenuEntry<Object>(p, p.label, section: 'Relative'),
+        const MenuEntry<Object>(
+          'custom',
+          'Custom range…',
+          icon: Icons.date_range_outlined,
+          section: 'Absolute',
+        ),
       ],
       onSelected: (v) {
         if (v is RelativePreset) {
@@ -66,15 +91,24 @@ class TimeRangeButton extends StatelessWidget {
           _custom(context);
         }
       },
-      builder: (context, open) =>
-          MenuPill(icon: Icons.schedule_rounded, label: range.label, open: open, active: !range.isRelative),
+      builder: (context, open) => MenuPill(
+        icon: Icons.schedule_rounded,
+        label: range.label,
+        open: open,
+        active: !range.isRelative,
+      ),
     );
   }
 }
 
 /// Multi-select of severity levels, with counts when available.
 class SeverityButton extends StatelessWidget {
-  const SeverityButton({super.key, required this.selected, required this.totals, required this.onChanged});
+  const SeverityButton({
+    super.key,
+    required this.selected,
+    required this.totals,
+    required this.onChanged,
+  });
 
   final Set<Severity> selected;
   final Map<Severity, int>? totals;
@@ -84,7 +118,10 @@ class SeverityButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = selected.isEmpty
         ? 'All levels'
-        : Severity.values.where(selected.contains).map((s) => s.label).join(', ');
+        : Severity.values
+              .where(selected.contains)
+              .map((s) => s.label)
+              .join(', ');
     return AppMenuAnchor<Severity>(
       tooltip: 'Severity',
       multi: true,
@@ -101,7 +138,9 @@ class SeverityButton extends StatelessWidget {
               height: 8,
               decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
             ),
-            trailing: totals == null ? null : NumberFormat.compact().format(totals![s] ?? 0),
+            trailing: totals == null
+                ? null
+                : NumberFormat.compact().format(totals![s] ?? 0),
           ),
       ],
       onToggle: (s) {
@@ -109,8 +148,12 @@ class SeverityButton extends StatelessWidget {
         next.contains(s) ? next.remove(s) : next.add(s);
         onChanged(next);
       },
-      builder: (context, open) =>
-          MenuPill(icon: Icons.filter_list_rounded, label: label, open: open, active: selected.isNotEmpty),
+      builder: (context, open) => MenuPill(
+        icon: Icons.filter_list_rounded,
+        label: label,
+        open: open,
+        active: selected.isNotEmpty,
+      ),
     );
   }
 }
@@ -133,18 +176,28 @@ Future<FilterChoice?> showFilterDialog(
   BuildContext context, {
   required List<String> knownServices,
   required List<String> knownKeys,
+  Map<String, List<String>> knownValues = const {},
 }) {
   return showDialog<FilterChoice>(
     context: context,
-    builder: (_) => _FilterDialog(knownServices: knownServices, knownKeys: knownKeys),
+    builder: (_) => _FilterDialog(
+      knownServices: knownServices,
+      knownKeys: knownKeys,
+      knownValues: knownValues,
+    ),
   );
 }
 
 class _FilterDialog extends StatefulWidget {
-  const _FilterDialog({required this.knownServices, required this.knownKeys});
+  const _FilterDialog({
+    required this.knownServices,
+    required this.knownKeys,
+    required this.knownValues,
+  });
 
   final List<String> knownServices;
   final List<String> knownKeys;
+  final Map<String, List<String>> knownValues;
 
   @override
   State<_FilterDialog> createState() => _FilterDialogState();
@@ -155,7 +208,11 @@ class _FilterDialogState extends State<_FilterDialog> {
   final _value = TextEditingController();
   FilterOp _op = FilterOp.equals;
 
-  bool get _isService => const {'service.name', 'service_name', 'service'}.contains(_key.text.trim());
+  bool get _isService => const {
+    'service.name',
+    'service_name',
+    'service',
+  }.contains(_key.text.trim());
 
   @override
   void dispose() {
@@ -169,78 +226,165 @@ class _FilterDialogState extends State<_FilterDialog> {
     final value = _value.text.trim();
     if (key.isEmpty || (_op.needsValue && value.isEmpty)) return;
     if (_isService && (_op == FilterOp.equals || _op == FilterOp.notEquals)) {
-      Navigator.pop(context, ServiceChoice(value, exclude: _op == FilterOp.notEquals));
+      Navigator.pop(
+        context,
+        ServiceChoice(value, exclude: _op == FilterOp.notEquals),
+      );
       return;
     }
-    Navigator.pop(context, AttrChoice(AttrFilter(_isService ? 'service' : key, _op, value)));
+    Navigator.pop(
+      context,
+      AttrChoice(AttrFilter(_isService ? 'service' : key, _op, value)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final keys = ['service.name', 'message', 'userId', 'sessionId', 'traceId', ...widget.knownKeys];
-    final suggestions = _isService ? widget.knownServices : const <String>[];
-    return AlertDialog(
-      title: const Text('Add filter'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final keys = [
+      'service.name',
+      'message',
+      'userId',
+      'sessionId',
+      'traceId',
+      ...widget.knownKeys,
+    ];
+    final key = _key.text.trim();
+    final allSuggestions = _isService
+        ? widget.knownServices
+        : (widget.knownValues[key] ?? const <String>[]);
+    final typed = _value.text.trim().toLowerCase();
+    final suggestions = allSuggestions
+        .where((v) => typed.isEmpty || v.toLowerCase().contains(typed))
+        .take(12)
+        .toList();
+    final mobile = isMobileLayout(context);
+    final form = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _key,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            labelText: 'Field',
+            helperText:
+                'service.name, message, or any attribute (e.g. app.version)',
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
           children: [
-            TextField(
-              controller: _key,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Field',
-                helperText: 'service.name, message, or any attribute (e.g. app.version)',
+            for (final k in keys.toSet().take(14))
+              ChoiceChip(
+                label: Text(k, style: const TextStyle(fontSize: 12)),
+                selected: key == k,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => setState(() => _key.text = k),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final k in keys.toSet().take(14))
-                  ChoiceChip(
-                    label: Text(k, style: const TextStyle(fontSize: 12)),
-                    selected: _key.text.trim() == k,
-                    visualDensity: VisualDensity.compact,
-                    onSelected: (_) => setState(() => _key.text = k),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            AppSelectField<FilterOp>(
-              label: 'Operator',
-              value: _op,
-              entries: [for (final op in FilterOp.values) MenuEntry(op, op.label)],
-              onChanged: (v) => setState(() => _op = v),
-            ),
-            if (_op.needsValue) ...[
-              const SizedBox(height: 14),
-              TextField(
-                controller: _value,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Value'),
-                onSubmitted: (_) => _submit(),
-              ),
-              if (suggestions.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final s in suggestions.take(12))
-                      ActionChip(label: Text(s), onPressed: () => setState(() => _value.text = s)),
-                  ],
-                ),
-              ],
-            ],
           ],
         ),
-      ),
+        const SizedBox(height: 14),
+        AppSelectField<FilterOp>(
+          label: 'Operator',
+          value: _op,
+          entries: [for (final op in FilterOp.values) MenuEntry(op, op.label)],
+          onChanged: (v) => setState(() => _op = v),
+        ),
+        if (_op.needsValue) ...[
+          const SizedBox(height: 14),
+          TextField(
+            controller: _value,
+            autofocus: !mobile,
+            decoration: InputDecoration(
+              labelText: 'Value',
+              hintText: allSuggestions.isEmpty
+                  ? 'Enter a value'
+                  : 'Search existing values',
+              suffixIcon: IconButton(
+                tooltip: 'Clear value',
+                onPressed: () => setState(_value.clear),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _submit(),
+          ),
+          if (suggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: suggestions.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final value = suggestions[index];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.history_rounded, size: 18),
+                    title: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onTap: () => setState(() => _value.text = value),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+    if (mobile) {
+      return Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Add filter'),
+            leading: IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              children: [form],
+            ),
+          ),
+          bottomNavigationBar: SafeArea(
+            minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _submit,
+                    child: const Text('Add filter'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return AlertDialog(
+      title: const Text('Add filter'),
+      content: SizedBox(width: 420, child: form),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(onPressed: _submit, child: const Text('Add filter')),
       ],
     );

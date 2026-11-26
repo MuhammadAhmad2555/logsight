@@ -17,12 +17,18 @@ import '../../state/providers.dart';
 import '../logs/filter_controls.dart';
 import '../logs/volume_chart.dart';
 
-String activityUri(String pid, ActivityQuery q) =>
-    Uri(path: '/p/$pid/activity', queryParameters: q.toQueryParameters()).toString();
+String activityUri(String pid, ActivityQuery q) => Uri(
+  path: '/p/$pid/activity',
+  queryParameters: q.toQueryParameters(),
+).toString();
 
 /// The Activity explorer: every product event, live, with filters.
 class ActivityScreen extends ConsumerStatefulWidget {
-  const ActivityScreen({super.key, required this.projectId, required this.query});
+  const ActivityScreen({
+    super.key,
+    required this.projectId,
+    required this.query,
+  });
 
   final String projectId;
   final ActivityQuery query;
@@ -48,6 +54,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   Timer? _chartTimer;
   ActivityEvent? _selected;
   final Set<String> _knownProps = {};
+  final Map<String, Set<String>> _knownValues = {};
   final Set<String> _registered = {};
   int _gen = 0;
 
@@ -58,7 +65,8 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(() {
-      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) _loadMore();
+      if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400)
+        _loadMore();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
@@ -66,7 +74,8 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   @override
   void didUpdateWidget(ActivityScreen old) {
     super.didUpdateWidget(old);
-    if (old.query != widget.query || old.projectId != widget.projectId) _reload();
+    if (old.query != widget.query || old.projectId != widget.projectId)
+      _reload();
   }
 
   @override
@@ -76,12 +85,29 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     super.dispose();
   }
 
-  void _setQuery(ActivityQuery q) => context.go(activityUri(widget.projectId, q));
+  void _setQuery(ActivityQuery q) =>
+      context.go(activityUri(widget.projectId, q));
 
   void _remember(Iterable<ActivityEvent> events) {
-    final defs = {for (final d in ref.read(eventDefinitionsProvider(widget.projectId)).value ?? const []) d.name};
+    final defs = {
+      for (final d
+          in ref.read(eventDefinitionsProvider(widget.projectId)).value ??
+              const [])
+        d.name,
+    };
     for (final e in events) {
       _knownProps.addAll(e.properties.keys);
+      for (final entry in e.properties.entries) {
+        final items = entry.value is Iterable
+            ? entry.value as Iterable
+            : [entry.value];
+        for (final item in items) {
+          if (item == null || item is Map || item is Iterable) continue;
+          final value = item.toString().trim();
+          if (value.isNotEmpty)
+            _knownValues.putIfAbsent(entry.key, () => <String>{}).add(value);
+        }
+      }
       // Events sent without the SDK (plain HTTP) don't register their name.
       if (!defs.contains(e.event) && _registered.add(e.event)) {
         ref
@@ -106,7 +132,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     });
     _loadChart(gen);
     try {
-      final page = await ref.read(activityRepositoryProvider).fetchPage(widget.projectId, _q);
+      final page = await ref
+          .read(activityRepositoryProvider)
+          .fetchPage(widget.projectId, _q);
       if (gen != _gen || !mounted) return;
       _remember(page.events);
       setState(() {
@@ -131,7 +159,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     if (!quiet) setState(() => _volume = null);
     try {
       final repo = ref.read(activityRepositoryProvider);
-      final r = await Future.wait([repo.volume(widget.projectId, _q), repo.count(widget.projectId, _q)]);
+      final r = await Future.wait([
+        repo.volume(widget.projectId, _q),
+        repo.count(widget.projectId, _q),
+      ]);
       if (gen != _gen || !mounted) return;
       setState(() {
         _volume = r[0] as List<VolumeBucket>;
@@ -147,7 +178,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     final gen = _gen;
     setState(() => _loadingMore = true);
     try {
-      final page = await ref.read(activityRepositoryProvider).fetchPage(widget.projectId, _q, after: _cursor);
+      final page = await ref
+          .read(activityRepositoryProvider)
+          .fetchPage(widget.projectId, _q, after: _cursor);
       if (gen != _gen || !mounted) return;
       final fresh = page.events.where((e) => !_ids.contains(e.id)).toList();
       _remember(fresh);
@@ -185,7 +218,12 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             });
           },
           onError: (Object e) {
-            if (mounted) showMessage(context, 'Live updates stopped: ${friendlyError(e)}', error: true);
+            if (mounted)
+              showMessage(
+                context,
+                'Live updates stopped: ${friendlyError(e)}',
+                error: true,
+              );
           },
         );
     _chartTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -203,7 +241,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   void _toggleLive() {
     if (!_q.range.isRelative) {
       _paused = false;
-      _setQuery(_q.copyWith(range: const TimeRange.relative(RelativePreset.h1)));
+      _setQuery(
+        _q.copyWith(range: const TimeRange.relative(RelativePreset.h1)),
+      );
       return;
     }
     setState(() => _paused = !_paused);
@@ -238,7 +278,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   }
 
   Future<void> _pickEvents() async {
-    final defs = ref.read(eventDefinitionsProvider(widget.projectId)).value ?? const <EventDefinition>[];
+    final defs =
+        ref.read(eventDefinitionsProvider(widget.projectId)).value ??
+        const <EventDefinition>[];
     final names = {...defs.map((d) => d.name), ..._q.events}.toList()..sort();
     final picked = await showDialog<List<String>>(
       context: context,
@@ -250,14 +292,31 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   Future<void> _addFilter() async {
     final choice = await showFilterDialog(
       context,
-      knownServices: ref.read(servicesProvider(widget.projectId)).value?.map((s) => s.name).toList() ?? const [],
+      knownServices:
+          ref
+              .read(servicesProvider(widget.projectId))
+              .value
+              ?.map((s) => s.name)
+              .toList() ??
+          const [],
       knownKeys: (_knownProps.toList()..sort()),
+      knownValues: {
+        for (final entry in _knownValues.entries)
+          entry.key: entry.value.toList()..sort(),
+      },
     );
     switch (choice) {
       case ServiceChoice c when !c.exclude:
         _setQuery(_q.copyWith(services: [c.service]));
       case ServiceChoice c:
-        _setQuery(_q.copyWith(filters: [..._q.filters, AttrFilter('service', FilterOp.notEquals, c.service)]));
+        _setQuery(
+          _q.copyWith(
+            filters: [
+              ..._q.filters,
+              AttrFilter('service', FilterOp.notEquals, c.service),
+            ],
+          ),
+        );
       case AttrChoice c:
         _setQuery(_q.copyWith(filters: [..._q.filters, c.filter]));
       case null:
@@ -276,7 +335,8 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         allowCustom: true,
       ),
     );
-    if (picked != null) ref.read(activityColumnsProvider.notifier).set(picked.take(6).toList());
+    if (picked != null)
+      ref.read(activityColumnsProvider.notifier).set(picked.take(6).toList());
   }
 
   @override
@@ -294,7 +354,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: GlassPanel(
               radius: 20,
-              child: LayoutBuilder(builder: (context, c) => _table(columns, c.maxWidth >= 720)),
+              child: LayoutBuilder(
+                builder: (context, c) => _table(columns, c.maxWidth >= 720),
+              ),
             ),
           ),
         ),
@@ -344,7 +406,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             onPressed: _pickEvents,
             icon: const Icon(Icons.bolt, size: 18),
             label: Text(
-              _q.events.isEmpty ? 'All events' : '${_q.events.length} event${_q.events.length == 1 ? '' : 's'}',
+              _q.events.isEmpty
+                  ? 'All events'
+                  : '${_q.events.length} event${_q.events.length == 1 ? '' : 's'}',
             ),
           ),
           OutlinedButton.icon(
@@ -358,27 +422,44 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               size: 13,
               color: _liveOn ? Colors.redAccent : theme.colorScheme.outline,
             ),
-            label: Text(_liveOn ? 'Live' : (_q.range.isRelative ? 'Paused' : 'Live')),
+            label: Text(
+              _liveOn ? 'Live' : (_q.range.isRelative ? 'Paused' : 'Live'),
+            ),
             selected: _liveOn,
             showCheckmark: false,
-            tooltip: _liveOn ? 'New events appear automatically. Tap to pause.' : 'Tap for live updates',
+            tooltip: _liveOn
+                ? 'New events appear automatically. Tap to pause.'
+                : 'Tap for live updates',
             onSelected: (_) => _toggleLive(),
           ),
-          IconButton(tooltip: 'Columns', onPressed: _editColumns, icon: const Icon(Icons.view_column_outlined)),
-          IconButton(tooltip: 'Refresh', onPressed: _reload, icon: const Icon(Icons.refresh)),
+          IconButton(
+            tooltip: 'Columns',
+            onPressed: _editColumns,
+            icon: const Icon(Icons.view_column_outlined),
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _reload,
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
     );
   }
 
   Widget _activeFilters() {
-    final people = ref.watch(peopleProvider(widget.projectId)).value ?? const <Person>[];
-    String personLabel(String id) => people.where((p) => p.id == id).map((p) => p.displayName).firstOrNull ?? id;
+    final people =
+        ref.watch(peopleProvider(widget.projectId)).value ?? const <Person>[];
+    String personLabel(String id) =>
+        people.where((p) => p.id == id).map((p) => p.displayName).firstOrNull ??
+        id;
     final chips = <Widget>[
       for (final e in _q.events)
         InputChip(
           label: Text('event = $e'),
-          onDeleted: () => _setQuery(_q.copyWith(events: _q.events.where((x) => x != e).toList())),
+          onDeleted: () => _setQuery(
+            _q.copyWith(events: _q.events.where((x) => x != e).toList()),
+          ),
         ),
       if (_q.distinctIds.isNotEmpty)
         InputChip(
@@ -394,12 +475,16 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       for (final s in _q.services)
         InputChip(
           label: Text('service.name = $s'),
-          onDeleted: () => _setQuery(_q.copyWith(services: _q.services.where((x) => x != s).toList())),
+          onDeleted: () => _setQuery(
+            _q.copyWith(services: _q.services.where((x) => x != s).toList()),
+          ),
         ),
       for (final f in _q.filters)
         InputChip(
           label: Text(f.label),
-          onDeleted: () => _setQuery(_q.copyWith(filters: _q.filters.where((x) => x != f).toList())),
+          onDeleted: () => _setQuery(
+            _q.copyWith(filters: _q.filters.where((x) => x != f).toList()),
+          ),
         ),
     ];
     if (chips.isEmpty) return const SizedBox.shrink();
@@ -431,7 +516,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _total == null ? 'Events' : '${NumberFormat.decimalPattern().format(_total)} events',
+                _total == null
+                    ? 'Events'
+                    : '${NumberFormat.decimalPattern().format(_total)} events',
                 style: theme.textTheme.titleSmall,
               ),
               const SizedBox(height: 8),
@@ -439,11 +526,16 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                 height: wide ? 110 : 90,
                 child: _volume == null
                     ? const Center(
-                        child: SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                        child: SizedBox.square(
+                          dimension: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       )
                     : VolumeChart(
                         buckets: _volume!,
-                        onZoom: (from, to) => _setQuery(_q.copyWith(range: TimeRange.absolute(from, to))),
+                        onZoom: (from, to) => _setQuery(
+                          _q.copyWith(range: TimeRange.absolute(from, to)),
+                        ),
                       ),
               ),
             ],
@@ -454,8 +546,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   }
 
   Widget _table(List<String> columns, bool roomy) {
-    if (_loading && _events.isEmpty) return const Center(child: CircularProgressIndicator());
-    if (_error != null && _events.isEmpty) return ErrorView(_error!, onRetry: _reload);
+    if (_loading && _events.isEmpty)
+      return const Center(child: CircularProgressIndicator());
+    if (_error != null && _events.isEmpty)
+      return ErrorView(_error!, onRetry: _reload);
     if (_events.isEmpty) {
       return EmptyState(
         icon: Icons.bolt_outlined,
@@ -466,10 +560,19 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       );
     }
     final scheme = Theme.of(context).colorScheme;
-    final people = {for (final p in ref.watch(peopleProvider(widget.projectId)).value ?? const <Person>[]) p.id: p};
+    final people = {
+      for (final p
+          in ref.watch(peopleProvider(widget.projectId)).value ??
+              const <Person>[])
+        p.id: p,
+    };
     final shownColumns = roomy ? columns : const <String>[];
     final header = DefaultTextStyle.merge(
-      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: scheme.onSurfaceVariant,
+      ),
       child: Row(
         children: [
           const SizedBox(width: 120, child: Text('TIME')),
@@ -477,7 +580,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
           const Expanded(flex: 3, child: Text('PERSON')),
           if (roomy) const Expanded(flex: 2, child: Text('APP')),
           for (final c in shownColumns)
-            Expanded(flex: 2, child: Text(c.toUpperCase(), overflow: TextOverflow.ellipsis)),
+            Expanded(
+              flex: 2,
+              child: Text(c.toUpperCase(), overflow: TextOverflow.ellipsis),
+            ),
         ],
       ),
     );
@@ -503,22 +609,35 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                 final e = _events[i];
                 final person = people[e.distinctId];
                 return Material(
-                  color: _selected?.id == e.id ? scheme.secondaryContainer.withValues(alpha: 0.6) : Colors.transparent,
+                  color: _selected?.id == e.id
+                      ? scheme.secondaryContainer.withValues(alpha: 0.6)
+                      : Colors.transparent,
                   child: InkWell(
                     onTap: () => _select(e),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 9,
+                      ),
                       decoration: BoxDecoration(
-                        border: Border(bottom: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6))),
+                        border: Border(
+                          bottom: BorderSide(
+                            color: scheme.outlineVariant.withValues(alpha: 0.6),
+                          ),
+                        ),
                       ),
                       child: Row(
                         children: [
                           SizedBox(
                             width: 120,
                             child: Tooltip(
-                              message: DateFormat('yyyy-MM-dd HH:mm:ss.SSS').format(e.timestamp),
+                              message: DateFormat(
+                                'yyyy-MM-dd HH:mm:ss.SSS',
+                              ).format(e.timestamp),
                               child: Text(
-                                DateFormat('MMM dd HH:mm:ss').format(e.timestamp),
+                                DateFormat(
+                                  'MMM dd HH:mm:ss',
+                                ).format(e.timestamp),
                                 style: monoStyle.copyWith(fontSize: 12),
                               ),
                             ),
@@ -531,7 +650,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: e.distinctId.startsWith('anon_') && person?.properties.isEmpty != false
+                                color:
+                                    e.distinctId.startsWith('anon_') &&
+                                        person?.properties.isEmpty != false
                                     ? scheme.onSurfaceVariant
                                     : scheme.onSurface,
                               ),
@@ -543,7 +664,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                               child: Text(
                                 e.service ?? '',
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           for (final c in shownColumns)
@@ -575,13 +699,19 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   }
 
   Widget _footer() {
-    final style = TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.outline);
+    final style = TextStyle(
+      fontSize: 12,
+      color: Theme.of(context).colorScheme.outline,
+    );
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           if (_loadingMore)
-            const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+            const SizedBox.square(
+              dimension: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
           else if (_hasMore)
             OutlinedButton(onPressed: _loadMore, child: const Text('Load more'))
           else
@@ -611,7 +741,11 @@ class _EventName extends StatelessWidget {
     final builtIn = event.event.startsWith(r'$');
     return Row(
       children: [
-        Icon(iconFor(event.event), size: 16, color: builtIn ? scheme.onSurfaceVariant : scheme.primary),
+        Icon(
+          iconFor(event.event),
+          size: 16,
+          color: builtIn ? scheme.onSurfaceVariant : scheme.primary,
+        ),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -651,13 +785,25 @@ class EventDetail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final person = ref.watch(peopleProvider(projectId)).value?.where((p) => p.id == event.distinctId).firstOrNull;
+    final person = ref
+        .watch(peopleProvider(projectId))
+        .value
+        ?.where((p) => p.id == event.distinctId)
+        .firstOrNull;
     final fmt = DateFormat('yyyy-MM-dd HH:mm:ss.SSS');
-    final props = event.properties.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    final props = event.properties.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
 
-    Widget row(String label, String value, {VoidCallback? onTap, IconData? action}) => Container(
+    Widget row(
+      String label,
+      String value, {
+      VoidCallback? onTap,
+      IconData? action,
+    }) => Container(
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant)),
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
       ),
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
@@ -665,9 +811,19 @@ class EventDetail extends ConsumerWidget {
         children: [
           SizedBox(
             width: 120,
-            child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
-          Expanded(child: SelectableText(value, style: monoStyle.copyWith(fontSize: 12.5))),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: monoStyle.copyWith(fontSize: 12.5),
+            ),
+          ),
           if (onTap != null)
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -703,7 +859,11 @@ class EventDetail extends ConsumerWidget {
               ),
             ),
             if (onClose != null)
-              IconButton(tooltip: 'Close', icon: const Icon(Icons.close, size: 20), onPressed: onClose),
+              IconButton(
+                tooltip: 'Close',
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: onClose,
+              ),
           ],
         ),
         const SizedBox(height: 10),
@@ -712,10 +872,14 @@ class EventDetail extends ConsumerWidget {
           runSpacing: 8,
           children: [
             FilledButton.tonalIcon(
-              onPressed: () =>
-                  context.go('/p/$projectId/people/${Uri.encodeComponent(person?.id ?? event.distinctId)}'),
+              onPressed: () => context.go(
+                '/p/$projectId/people/${Uri.encodeComponent(person?.id ?? event.distinctId)}',
+              ),
               icon: const Icon(Icons.person_outline, size: 18),
-              label: Text(person?.displayName ?? 'View person', overflow: TextOverflow.ellipsis),
+              label: Text(
+                person?.displayName ?? 'View person',
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             OutlinedButton.icon(
               onPressed: () {
@@ -724,9 +888,20 @@ class EventDetail extends ConsumerWidget {
                     event.timestamp.subtract(const Duration(minutes: 5)),
                     event.timestamp.add(const Duration(minutes: 5)),
                   ),
-                  filters: [AttrFilter('userId', FilterOp.equals, person?.id ?? event.distinctId)],
+                  filters: [
+                    AttrFilter(
+                      'userId',
+                      FilterOp.equals,
+                      person?.id ?? event.distinctId,
+                    ),
+                  ],
                 );
-                context.go(Uri(path: '/p/$projectId/logs', queryParameters: q.toQueryParameters()).toString());
+                context.go(
+                  Uri(
+                    path: '/p/$projectId/logs',
+                    queryParameters: q.toQueryParameters(),
+                  ).toString(),
+                );
               },
               icon: const Icon(Icons.receipt_long_outlined, size: 18),
               label: const Text('Logs ±5 min'),
@@ -735,29 +910,57 @@ class EventDetail extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
         const SectionLabel('Event'),
-        row('Event', event.event, onTap: () => onFilter((q) => q.copyWith(events: [event.event]))),
+        row(
+          'Event',
+          event.event,
+          onTap: () => onFilter((q) => q.copyWith(events: [event.event])),
+        ),
         row('Time', fmt.format(event.timestamp)),
-        if (event.receivedAt != null) row('Received', fmt.format(event.receivedAt!)),
+        if (event.receivedAt != null)
+          row('Received', fmt.format(event.receivedAt!)),
         row(
           'Person',
           event.distinctId,
-          onTap: () => onFilter((q) => q.copyWith(distinctIds: person?.allIds ?? [event.distinctId])),
+          onTap: () => onFilter(
+            (q) =>
+                q.copyWith(distinctIds: person?.allIds ?? [event.distinctId]),
+          ),
         ),
         if (event.sessionId != null)
-          row('Session', event.sessionId!, onTap: () => onFilter((q) => q.copyWith(sessionId: event.sessionId))),
+          row(
+            'Session',
+            event.sessionId!,
+            onTap: () =>
+                onFilter((q) => q.copyWith(sessionId: event.sessionId)),
+          ),
         if (event.service != null)
-          row('App', event.service!, onTap: () => onFilter((q) => q.copyWith(services: [event.service!]))),
+          row(
+            'App',
+            event.service!,
+            onTap: () =>
+                onFilter((q) => q.copyWith(services: [event.service!])),
+          ),
         const SizedBox(height: 16),
         SectionLabel('Properties (${props.length})'),
         if (props.isEmpty)
-          Text('No properties', style: TextStyle(color: theme.colorScheme.outline))
+          Text(
+            'No properties',
+            style: TextStyle(color: theme.colorScheme.outline),
+          )
         else
           for (final p in props)
             row(
               p.key,
-              p.value is Map || p.value is List ? jsonEncode(p.value, toEncodable: (o) => '$o') : '${p.value}',
+              p.value is Map || p.value is List
+                  ? jsonEncode(p.value, toEncodable: (o) => '$o')
+                  : '${p.value}',
               onTap: () => onFilter(
-                (q) => q.copyWith(filters: [...q.filters, AttrFilter(p.key, FilterOp.equals, '${p.value}')]),
+                (q) => q.copyWith(
+                  filters: [
+                    ...q.filters,
+                    AttrFilter(p.key, FilterOp.equals, '${p.value}'),
+                  ],
+                ),
               ),
             ),
       ],
@@ -767,7 +970,12 @@ class EventDetail extends ConsumerWidget {
 
 /// Multi-select of names (events or property columns).
 class _EventPicker extends StatefulWidget {
-  const _EventPicker({required this.all, required this.selected, this.title = 'Events', this.allowCustom = false});
+  const _EventPicker({
+    required this.all,
+    required this.selected,
+    this.title = 'Events',
+    this.allowCustom = false,
+  });
 
   final List<String> all;
   final Set<String> selected;
@@ -793,7 +1001,10 @@ class _EventPickerState extends State<_EventPicker> {
   Widget build(BuildContext context) {
     final q = _search.text.trim().toLowerCase();
     final shown = _all.where((n) => n.toLowerCase().contains(q)).toList();
-    final canAdd = widget.allowCustom && q.isNotEmpty && !_all.contains(_search.text.trim());
+    final canAdd =
+        widget.allowCustom &&
+        q.isNotEmpty &&
+        !_all.contains(_search.text.trim());
     return AlertDialog(
       title: Text(widget.title),
       content: SizedBox(
@@ -806,7 +1017,9 @@ class _EventPickerState extends State<_EventPicker> {
               autofocus: true,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search, size: 20),
-                hintText: widget.allowCustom ? 'Search or type a property name' : 'Search',
+                hintText: widget.allowCustom
+                    ? 'Search or type a property name'
+                    : 'Search',
               ),
               onChanged: (_) => setState(() {}),
             ),
@@ -831,8 +1044,13 @@ class _EventPickerState extends State<_EventPicker> {
                           CheckboxListTile(
                             dense: true,
                             value: _sel.contains(n),
-                            title: Text(n, style: monoStyle.copyWith(fontSize: 13)),
-                            onChanged: (v) => setState(() => v == true ? _sel.add(n) : _sel.remove(n)),
+                            title: Text(
+                              n,
+                              style: monoStyle.copyWith(fontSize: 13),
+                            ),
+                            onChanged: (v) => setState(
+                              () => v == true ? _sel.add(n) : _sel.remove(n),
+                            ),
                           ),
                       ],
                     ),
@@ -841,10 +1059,17 @@ class _EventPickerState extends State<_EventPicker> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => setState(_sel.clear), child: const Text('Clear')),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => setState(_sel.clear),
+          child: const Text('Clear'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, _all.where(_sel.contains).toList()),
+          onPressed: () =>
+              Navigator.pop(context, _all.where(_sel.contains).toList()),
           child: const Text('Apply'),
         ),
       ],

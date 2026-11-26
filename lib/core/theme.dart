@@ -27,10 +27,13 @@ abstract final class Brand {
 }
 
 const _font = 'Inter';
-const _radius = 12.0;
-const _controlHeight = 40.0;
+const _desktopRadius = 12.0;
+const _mobileRadius = 14.0;
 
-ThemeData buildTheme(Brightness brightness) {
+ThemeData buildTheme(Brightness brightness, {bool? mobileOverride}) {
+  final mobile = mobileOverride ?? isMobilePlatform;
+  final radius = mobile ? _mobileRadius : _desktopRadius;
+  final controlHeight = mobile ? 48.0 : 40.0;
   final dark = brightness == Brightness.dark;
   final ink = dark ? const Color(0xFFECEDF7) : const Color(0xFF151833);
   final inkMuted = dark ? const Color(0xFFA2A6C4) : const Color(0xFF5D6283);
@@ -69,22 +72,24 @@ ThemeData buildTheme(Brightness brightness) {
     labelSmall: t.labelSmall?.copyWith(fontWeight: FontWeight.w600, letterSpacing: 0.2),
   );
 
-  final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius));
-  final fieldFill = dark ? Colors.white.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.72);
+  final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius));
+  final fieldFill = dark
+      ? Colors.white.withValues(alpha: mobile ? 0.07 : 0.05)
+      : Colors.white.withValues(alpha: mobile ? 0.88 : 0.72);
   final hoverFill = dark ? Colors.white.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.92);
   final border = scheme.outlineVariant;
   final borderHover = dark ? Colors.white.withValues(alpha: 0.18) : const Color(0xFF151833).withValues(alpha: 0.18);
   final accentWash = scheme.primary.withValues(alpha: dark ? 0.18 : 0.10);
   const buttonPadding = EdgeInsets.symmetric(horizontal: 16);
   final buttonText = text.labelLarge;
-  const controlSize = Size(0, _controlHeight);
+  final controlSize = Size(0, controlHeight);
 
   Color? hover(Set<WidgetState> s, Color c) => s.contains(WidgetState.pressed)
       ? c.withValues(alpha: 0.16)
       : (s.contains(WidgetState.hovered) || s.contains(WidgetState.focused) ? c.withValues(alpha: 0.08) : null);
 
   OutlineInputBorder outline(Color c, [double w = 1]) => OutlineInputBorder(
-    borderRadius: BorderRadius.circular(_radius),
+    borderRadius: BorderRadius.circular(radius),
     borderSide: BorderSide(color: c, width: w),
   );
 
@@ -107,13 +112,14 @@ ThemeData buildTheme(Brightness brightness) {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
+      toolbarHeight: mobile ? 60 : 56,
       titleTextStyle: text.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 17),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
-      height: 66,
+      height: mobile ? 72 : 66,
       indicatorColor: accentWash,
       indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       iconTheme: WidgetStateProperty.resolveWith(
@@ -196,7 +202,7 @@ ThemeData buildTheme(Brightness brightness) {
       backgroundColor: scheme.inverseSurface,
       contentTextStyle: text.bodyMedium?.copyWith(color: scheme.onInverseSurface, fontWeight: FontWeight.w500),
       actionTextColor: dark ? Brand.indigo : Brand.indigoLight,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
       insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
     ),
 
@@ -232,7 +238,7 @@ ThemeData buildTheme(Brightness brightness) {
     // ------------------------------------------------------------- buttons
     filledButtonTheme: FilledButtonThemeData(
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(controlSize),
+        minimumSize: WidgetStatePropertyAll(controlSize),
         padding: const WidgetStatePropertyAll(buttonPadding),
         shape: WidgetStatePropertyAll(shape),
         textStyle: WidgetStatePropertyAll(buttonText),
@@ -253,7 +259,7 @@ ThemeData buildTheme(Brightness brightness) {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(controlSize),
+        minimumSize: WidgetStatePropertyAll(controlSize),
         padding: const WidgetStatePropertyAll(buttonPadding),
         shape: WidgetStatePropertyAll(shape),
         textStyle: WidgetStatePropertyAll(buttonText),
@@ -272,7 +278,7 @@ ThemeData buildTheme(Brightness brightness) {
     ),
     textButtonTheme: TextButtonThemeData(
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(0, 36)),
+        minimumSize: WidgetStatePropertyAll(Size(0, mobile ? 44 : 36)),
         padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 12)),
         shape: WidgetStatePropertyAll(shape),
         textStyle: WidgetStatePropertyAll(buttonText),
@@ -285,7 +291,7 @@ ThemeData buildTheme(Brightness brightness) {
     ),
     iconButtonTheme: IconButtonThemeData(
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(36, 36)),
+        minimumSize: WidgetStatePropertyAll(Size(mobile ? 44 : 36, mobile ? 44 : 36)),
         iconSize: const WidgetStatePropertyAll(20),
         shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
         foregroundColor: WidgetStateProperty.resolveWith(
@@ -321,7 +327,7 @@ ThemeData buildTheme(Brightness brightness) {
       ),
     ),
     toggleButtonsTheme: ToggleButtonsThemeData(
-      borderRadius: BorderRadius.circular(_radius),
+      borderRadius: BorderRadius.circular(radius),
       borderColor: border,
       selectedBorderColor: border,
       fillColor: accentWash,
@@ -394,13 +400,15 @@ ThemeData buildTheme(Brightness brightness) {
     // --------------------------------------------------------------- lists
     dividerTheme: DividerThemeData(color: border, space: 1, thickness: 1),
     listTileTheme: ListTileThemeData(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
       iconColor: inkMuted,
       selectedColor: scheme.primary,
       selectedTileColor: accentWash,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       minLeadingWidth: 24,
       horizontalTitleGap: 12,
+      minTileHeight: mobile ? 56 : null,
+      minVerticalPadding: mobile ? 10 : null,
       titleTextStyle: text.bodyLarge?.copyWith(fontWeight: FontWeight.w500, fontSize: 14.5, color: ink),
       subtitleTextStyle: text.bodySmall,
     ),
@@ -425,15 +433,19 @@ const monoStyle = TextStyle(
   fontFamilyFallback: ['SF Mono', 'Menlo', 'Consolas', 'Courier New', 'monospace'],
 );
 
-/// True on desktop apps (macOS, Windows, Linux) and desktop web browsers.
-/// These always use the desktop layout (sidebar, side panels), however narrow
-/// the window gets. Phones and mobile browsers use the phone layout.
+/// True on native desktop apps. Web chooses its layout from viewport width.
 bool get isDesktopPlatform {
   final p = defaultTargetPlatform;
-  final mobile = p == TargetPlatform.iOS || p == TargetPlatform.android || p == TargetPlatform.fuchsia;
-  return !mobile;
+  return !kIsWeb && p != TargetPlatform.iOS && p != TargetPlatform.android && p != TargetPlatform.fuchsia;
 }
 
-/// Desktop layout: always on desktop platforms; on phones and tablets only
-/// when the screen is wide (e.g. iPad landscape).
+bool get isMobilePlatform =>
+    defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android;
+
+/// Compact mobile layout on native phones and narrow mobile web viewports.
+bool isMobileLayout(BuildContext context) =>
+    isMobilePlatform || (kIsWeb && MediaQuery.sizeOf(context).width < 700);
+
+/// Desktop layout: always on native desktop apps, and on web or mobile when
+/// the viewport is wide enough for a sidebar and side panels.
 bool isWide(BuildContext context) => isDesktopPlatform || MediaQuery.sizeOf(context).width >= 900;
