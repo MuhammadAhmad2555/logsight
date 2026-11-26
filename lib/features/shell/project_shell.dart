@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -98,47 +99,57 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-                child: Text(
-                  'Project tools',
-                  style: Theme.of(ctx).textTheme.titleMedium,
-                ),
-              ),
-              for (var i = _phoneTabs; i < _items.length; i++)
-                ListTile(
-                  leading: Icon(
-                    i == _index ? _items[i].selectedIcon : _items[i].icon,
-                    color: i == _index
-                        ? Theme.of(ctx).colorScheme.primary
-                        : null,
-                  ),
-                  title: Text(_items[i].label),
-                  selected: i == _index,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _go(i);
-                  },
-                ),
-              ListTile(
-                leading: const Icon(Icons.account_circle_outlined),
-                title: const Text('Account'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context.push('/account');
-                },
-              ),
-            ],
+      isScrollControlled: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        final tiles = <(String, IconData, bool, VoidCallback)>[
+          for (var i = _phoneTabs; i < _items.length; i++)
+            (
+              _items[i].label,
+              i == _index ? _items[i].selectedIcon : _items[i].icon,
+              i == _index,
+              () {
+                Navigator.pop(ctx);
+                _go(i);
+              },
+            ),
+          (
+            'Account',
+            Icons.account_circle_outlined,
+            false,
+            () {
+              Navigator.pop(ctx);
+              context.push('/account');
+            },
           ),
-        ),
-      ),
+        ];
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+                  child: Text('More', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 1.05,
+                  children: [
+                    for (final t in tiles) _MoreTile(label: t.$1, icon: t.$2, selected: t.$3, onTap: t.$4),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -306,36 +317,92 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
         ),
       ),
       body: widget.child,
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      bottomNavigationBar: _FloatingDock(
+        selected: _index < _phoneTabs ? _index : _phoneTabs,
+        moreLabel: _index >= _phoneTabs ? _items[_index].label : 'More',
+        moreIcon: _index >= _phoneTabs ? _items[_index].selectedIcon : Icons.grid_view_rounded,
+        onSelect: (i) => i < _phoneTabs ? _go(i) : _showMore(),
+      ),
+    );
+  }
+}
+
+/// Phone navigation: a floating frosted capsule. The current tab grows into a
+/// gradient pill with its label; the others are icons only. When a page from
+/// "More" is open, the last slot shows that page.
+class _FloatingDock extends StatelessWidget {
+  const _FloatingDock({
+    required this.selected,
+    required this.moreLabel,
+    required this.moreIcon,
+    required this.onSelect,
+  });
+
+  final int selected;
+  final String moreLabel;
+  final IconData moreIcon;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    final slots = [
+      for (var i = 0; i < _phoneTabs; i++) (_items[i].label, _items[i].icon, _items[i].selectedIcon),
+      (moreLabel, selected == _phoneTabs ? moreIcon : Icons.grid_view_rounded, moreIcon),
+    ];
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dark ? 0.45 : 0.12),
+              blurRadius: 28,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: theme.colorScheme.primary.withValues(alpha: dark ? 0.10 : 0.06),
+              blurRadius: 40,
+              spreadRadius: -6,
+            ),
+          ],
+        ),
         child: GlassPanel(
-          radius: 22,
-          strength: 1.05,
+          radius: 32,
+          blur: 28,
+          strength: dark ? 1.4 : 1.05,
           shadow: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(6, 7, 6, 5),
-            child: Row(
-              children: [
-                for (var i = 0; i < _phoneTabs; i++)
-                  Expanded(
-                    child: _MobileNavDestination(
-                      label: _items[i].label,
-                      icon: _items[i].icon,
-                      selectedIcon: _items[i].selectedIcon,
-                      selected: _index == i,
-                      onTap: () => _go(i),
-                    ),
-                  ),
-                Expanded(
-                  child: _MobileNavDestination(
-                    label: 'More',
-                    icon: Icons.more_horiz_rounded,
-                    selectedIcon: Icons.more_horiz_rounded,
-                    selected: _index >= _phoneTabs,
-                    onTap: _showMore,
-                  ),
-                ),
-              ],
+          child: SizedBox(
+            height: 64,
+            child: Padding(
+              padding: const EdgeInsets.all(7),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  // The selected slot gets extra room for its label.
+                  final n = slots.length;
+                  final wide = (c.maxWidth * 0.36).clamp(96.0, 150.0);
+                  final narrow = (c.maxWidth - wide) / (n - 1);
+                  return Row(
+                    children: [
+                      for (var i = 0; i < n; i++)
+                        _DockItem(
+                          width: i == selected ? wide : narrow,
+                          label: slots[i].$1,
+                          icon: slots[i].$2,
+                          selectedIcon: slots[i].$3,
+                          selected: i == selected,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            onSelect(i);
+                          },
+                        ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -344,8 +411,9 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
   }
 }
 
-class _MobileNavDestination extends StatelessWidget {
-  const _MobileNavDestination({
+class _DockItem extends StatefulWidget {
+  const _DockItem({
+    required this.width,
     required this.label,
     required this.icon,
     required this.selectedIcon,
@@ -353,6 +421,7 @@ class _MobileNavDestination extends StatelessWidget {
     required this.onTap,
   });
 
+  final double width;
   final String label;
   final IconData icon;
   final IconData selectedIcon;
@@ -360,57 +429,165 @@ class _MobileNavDestination extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_DockItem> createState() => _DockItemState();
+}
+
+class _DockItemState extends State<_DockItem> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = selected ? scheme.primary : scheme.onSurfaceVariant;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final sel = widget.selected;
+    const curve = Curves.easeOutCubic;
+    const duration = Duration(milliseconds: 320);
     return Semantics(
       button: true,
-      selected: selected,
-      label: label,
-      child: Tooltip(
-        message: label,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onTap,
-            child: SizedBox(
-              height: 58,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOutCubic,
-                    width: 42,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? scheme.primary.withValues(alpha: 0.14)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
+      selected: sel,
+      label: widget.label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _pressed ? 0.92 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: AnimatedContainer(
+            duration: duration,
+            curve: curve,
+            width: widget.width,
+            height: 50,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(25),
+              gradient: sel ? Brand.accent(theme.brightness) : null,
+              boxShadow: sel
+                  ? [
+                      BoxShadow(
+                        color: scheme.primary.withValues(alpha: 0.45),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                        spreadRadius: -4,
+                      ),
+                    ]
+                  : const [],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Center(
+              child: SingleChildScrollView(
+                // Keeps the row from overflowing while the width animates.
+                scrollDirection: Axis.horizontal,
+                physics: const NeverScrollableScrollPhysics(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
+                      child: Icon(
+                        sel ? widget.selectedIcon : widget.icon,
+                        key: ValueKey(sel),
+                        size: 22,
+                        color: sel ? Colors.white : scheme.onSurfaceVariant,
+                      ),
                     ),
-                    child: Icon(
-                      selected ? selectedIcon : icon,
-                      size: 20,
-                      color: color,
+                    AnimatedSize(
+                      duration: duration,
+                      curve: curve,
+                      child: sel
+                          ? Padding(
+                              padding: const EdgeInsets.only(left: 7),
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(maxWidth: widget.width - 52),
+                                child: Text(
+                                  widget.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5,
+                                    letterSpacing: -0.1,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontSize: 10,
-                      height: 1.15,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: color,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A tile in the "More" sheet: a tinted icon square above its label.
+class _MoreTile extends StatelessWidget {
+  const _MoreTile({required this.label, required this.icon, required this.selected, required this.onTap});
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    return Material(
+      color: selected
+          ? scheme.primary.withValues(alpha: dark ? 0.16 : 0.10)
+          : (dark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(
+          color: selected
+              ? scheme.primary.withValues(alpha: 0.5)
+              : (dark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.06)),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: selected ? Brand.accent(theme.brightness) : null,
+                  color: selected ? null : scheme.primary.withValues(alpha: dark ? 0.14 : 0.09),
+                ),
+                child: Icon(icon, size: 22, color: selected ? Colors.white : scheme.primary),
+              ),
+              const SizedBox(height: 9),
+              Text(
+                label,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                  color: selected ? scheme.primary : scheme.onSurface,
+                ),
+              ),
+            ],
           ),
         ),
       ),
