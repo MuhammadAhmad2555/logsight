@@ -184,17 +184,7 @@ class ActivityQuery {
     if (sessionId != null && e.sessionId != sessionId) return false;
     if (services.isNotEmpty && !services.contains(e.service)) return false;
     for (final f in filters) {
-      final raw = e.field(f.key);
-      final str = raw?.toString();
-      final ok = switch (f.op) {
-        FilterOp.exists => raw != null,
-        FilterOp.notExists => raw == null,
-        FilterOp.equals => str == f.value,
-        FilterOp.notEquals => str != f.value,
-        FilterOp.contains => str != null && str.toLowerCase().contains(f.value.toLowerCase()),
-        FilterOp.notContains => str == null || !str.toLowerCase().contains(f.value.toLowerCase()),
-      };
-      if (!ok) return false;
+      if (!f.test(e.field(f.key))) return false;
     }
     return true;
   }

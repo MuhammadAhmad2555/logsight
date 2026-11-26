@@ -11,6 +11,7 @@ import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/activity.dart';
+import '../../data/known_fields.dart';
 import '../../data/log_query.dart';
 import '../../data/log_repository.dart';
 import '../../state/providers.dart';
@@ -95,7 +96,14 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               const [])
         d.name,
     };
+    final fields = _fields;
     for (final e in events) {
+      fields.addMap(e.properties);
+      for (final (k, v) in [('event', e.event), ('distinctId', e.distinctId), ('sessionId', e.sessionId)]) {
+        if (v == null || v.isEmpty) continue;
+        fields.add(k, v);
+        _knownValues.putIfAbsent(k, () => <String>{}).add(v);
+      }
       _knownProps.addAll(e.properties.keys);
       for (final entry in e.properties.entries) {
         final items = entry.value is Iterable
@@ -116,6 +124,18 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             .catchError((_) {});
       }
     }
+    fields.save();
+  }
+
+  /// Every property seen in this project's events, kept across visits.
+  KnownFields? _fieldsStore;
+  String? _fieldsProject;
+  KnownFields get _fields {
+    if (_fieldsProject != widget.projectId) {
+      _fieldsProject = widget.projectId;
+      _fieldsStore = KnownFields(ref.read(sharedPreferencesProvider), 'activity_${widget.projectId}');
+    }
+    return _fieldsStore!;
   }
 
   Future<void> _reload() async {
@@ -299,10 +319,13 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               ?.map((s) => s.name)
               .toList() ??
           const [],
-      knownKeys: (_knownProps.toList()..sort()),
+      builtInKeys: activityBuiltInFields,
+      knownKeys: ({..._knownProps, ..._fields.sortedKeys()}.where((k) => !activityBuiltInFields.contains(k)).toList()
+        ..sort()),
       knownValues: {
+        for (final entry in _fields.sortedValues().entries) entry.key: entry.value,
         for (final entry in _knownValues.entries)
-          entry.key: entry.value.toList()..sort(),
+          entry.key: ({...?_fields.sortedValues()[entry.key], ...entry.value}.toList()..sort()),
       },
     );
     switch (choice) {

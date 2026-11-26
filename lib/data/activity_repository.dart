@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'activity.dart';
-import 'log_query.dart';
 import 'log_repository.dart';
 
 /// One page of events.
@@ -91,13 +90,9 @@ class ActivityRepository {
     ).limit(limit).snapshots().map((s) => s.docs.map(ActivityEvent.fromDoc).where(q.matches).toList());
   }
 
-  Future<List<VolumeBucket>> volume(String pid, ActivityQuery q, {int maxBuckets = 40}) async {
+  Future<List<VolumeBucket>> volume(String pid, ActivityQuery q, {int maxBuckets = 40}) {
     final (from, to) = q.range.resolve();
-    final buckets = buildBuckets(from, to, maxBuckets: maxBuckets);
-    final counts = await Future.wait(
-      buckets.map((b) async => (await serverQuery(pid, q, from: b.$1, to: b.$2).count().get()).count ?? 0),
-    );
-    return [for (var i = 0; i < buckets.length; i++) VolumeBucket(buckets[i].$1, buckets[i].$2, counts[i])];
+    return countVolume((f, t) => serverQuery(pid, q, from: f, to: t), from: from, to: to, maxBuckets: maxBuckets);
   }
 
   Future<int> count(String pid, ActivityQuery q) async {

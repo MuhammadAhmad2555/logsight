@@ -69,6 +69,8 @@ enum FilterOp {
   notEquals('≠', 'does not equal'),
   contains('~', 'contains'),
   notContains('!~', 'does not contain'),
+  greaterThan('>', 'greater than'),
+  lessThan('<', 'less than'),
   exists('∃', 'is set'),
   notExists('∄', 'is not set');
 
@@ -88,22 +90,47 @@ class AttrFilter {
   final FilterOp op;
   final String value;
 
-  bool matches(LogEntry log) {
-    final raw = log.field(key);
-    final str = raw?.toString();
+  bool matches(LogEntry log) => test(log.field(key));
+
+  /// Checks one field value. Lists match if any item matches (`tags = beta`),
+  /// and > / < compare numbers (`duration_ms > 500`), falling back to text.
+  bool test(Object? raw) {
     switch (op) {
       case FilterOp.exists:
         return raw != null;
       case FilterOp.notExists:
         return raw == null;
-      case FilterOp.equals:
-        return str == value;
       case FilterOp.notEquals:
-        return str != value;
-      case FilterOp.contains:
-        return str != null && str.toLowerCase().contains(value.toLowerCase());
+        return !AttrFilter(key, FilterOp.equals, value).test(raw);
       case FilterOp.notContains:
-        return str == null || !str.toLowerCase().contains(value.toLowerCase());
+        return !AttrFilter(key, FilterOp.contains, value).test(raw);
+      case FilterOp.equals:
+      case FilterOp.contains:
+      case FilterOp.greaterThan:
+      case FilterOp.lessThan:
+        if (raw == null) return false;
+        if (raw is Iterable) return raw.any(test);
+        return _testOne(raw);
+    }
+  }
+
+  bool _testOne(Object raw) {
+    final str = raw.toString();
+    switch (op) {
+      case FilterOp.equals:
+        if (str == value) return true;
+        final a = num.tryParse(str), b = num.tryParse(value);
+        if (a != null && b != null) return a == b;
+        return raw is bool && str == value.trim().toLowerCase();
+      case FilterOp.contains:
+        return str.toLowerCase().contains(value.toLowerCase());
+      case FilterOp.greaterThan:
+      case FilterOp.lessThan:
+        final a = num.tryParse(str), b = num.tryParse(value.trim());
+        final cmp = (a != null && b != null) ? a.compareTo(b) : str.compareTo(value);
+        return op == FilterOp.greaterThan ? cmp > 0 : cmp < 0;
+      default:
+        return false;
     }
   }
 

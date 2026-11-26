@@ -6,5 +6,7 @@
 #   - Firebase Hosting:   firebase.json rewrites ** to /index.html
 set -euo pipefail
 cd "$(dirname "$0")/.."
-flutter build web --release "$@"
+# --wasm: browsers with WasmGC (Chrome 119+, Safari 18.2+, Firefox 120+) load
+# the faster WebAssembly build; others automatically get the JavaScript one.
+flutter build web --release --wasm "$@"
 echo "Built: $(pwd)/build/web"

@@ -172,11 +172,29 @@ class AttrChoice extends FilterChoice {
   final AttrFilter filter;
 }
 
+/// Built-in log fields offered in the filter picker (see [LogEntry.field]).
+const logBuiltInFields = [
+  'service.name',
+  'severity',
+  'message',
+  'pattern',
+  'userId',
+  'sessionId',
+  'traceId',
+  'error.type',
+  'error.message',
+  'error.reason',
+];
+
+/// Built-in activity fields (see [ActivityEvent.field]).
+const activityBuiltInFields = ['service.name', 'event', 'distinctId', 'sessionId'];
+
 Future<FilterChoice?> showFilterDialog(
   BuildContext context, {
   required List<String> knownServices,
   required List<String> knownKeys,
   Map<String, List<String>> knownValues = const {},
+  List<String> builtInKeys = logBuiltInFields,
 }) {
   return showDialog<FilterChoice>(
     context: context,
@@ -184,6 +202,7 @@ Future<FilterChoice?> showFilterDialog(
       knownServices: knownServices,
       knownKeys: knownKeys,
       knownValues: knownValues,
+      builtInKeys: builtInKeys,
     ),
   );
 }
@@ -193,11 +212,13 @@ class _FilterDialog extends StatefulWidget {
     required this.knownServices,
     required this.knownKeys,
     required this.knownValues,
+    required this.builtInKeys,
   });
 
   final List<String> knownServices;
   final List<String> knownKeys;
   final Map<String, List<String>> knownValues;
+  final List<String> builtInKeys;
 
   @override
   State<_FilterDialog> createState() => _FilterDialogState();
@@ -238,16 +259,53 @@ class _FilterDialogState extends State<_FilterDialog> {
     );
   }
 
+  Widget _fieldPicker(BuildContext context, String key) {
+    final builtIn = widget.builtInKeys.toSet();
+    final custom = widget.knownKeys.where((k) => !builtIn.contains(k)).toList();
+    String? count(String k) {
+      final n = k == 'service.name' ? widget.knownServices.length : widget.knownValues[k]?.length;
+      return n == null || n == 0 ? null : '$n';
+    }
+
+    return AppMenuAnchor<String>(
+      tooltip: 'Field',
+      searchable: true,
+      searchHint: 'Search ${builtIn.length + custom.length} fields or type a new one',
+      selected: {key},
+      minWidth: 300,
+      maxHeight: 440,
+      customLabel: 'Use field',
+      onCustom: (q) => q.trim(),
+      entries: () => [
+        for (final k in builtIn) MenuEntry(k, k, mono: true, trailing: count(k), section: 'Built-in fields'),
+        for (final k in custom)
+          MenuEntry(k, k, mono: true, trailing: count(k), section: 'Custom attributes (${custom.length})'),
+      ],
+      onSelected: (k) => setState(() {
+        if (k.isEmpty) return;
+        _key.text = k;
+        _value.clear();
+      }),
+      builder: (context, open) => InputDecorator(
+        isFocused: open,
+        decoration: InputDecoration(
+          labelText: 'Field',
+          helperText: custom.isEmpty
+              ? 'Built-in field or any attribute name (e.g. app.version)'
+              : '${custom.length} custom attributes found · or type any name',
+          suffixIcon: AnimatedRotation(
+            turns: open ? 0.5 : 0,
+            duration: const Duration(milliseconds: 150),
+            child: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+          ),
+        ),
+        child: Text(key, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final keys = [
-      'service.name',
-      'message',
-      'userId',
-      'sessionId',
-      'traceId',
-      ...widget.knownKeys,
-    ];
     final key = _key.text.trim();
     final allSuggestions = _isService
         ? widget.knownServices
@@ -255,36 +313,14 @@ class _FilterDialogState extends State<_FilterDialog> {
     final typed = _value.text.trim().toLowerCase();
     final suggestions = allSuggestions
         .where((v) => typed.isEmpty || v.toLowerCase().contains(typed))
-        .take(12)
+        .take(40)
         .toList();
     final mobile = isMobileLayout(context);
     final form = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          controller: _key,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Field',
-            helperText:
-                'service.name, message, or any attribute (e.g. app.version)',
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final k in keys.toSet().take(14))
-              ChoiceChip(
-                label: Text(k, style: const TextStyle(fontSize: 12)),
-                selected: key == k,
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) => setState(() => _key.text = k),
-              ),
-          ],
-        ),
+        _fieldPicker(context, key),
         const SizedBox(height: 14),
         AppSelectField<FilterOp>(
           label: 'Operator',

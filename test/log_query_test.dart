@@ -89,6 +89,25 @@ void main() {
       expect(const LogQuery(filters: [AttrFilter('missing', FilterOp.notExists)]).matches(log), isTrue);
       expect(const LogQuery(filters: [AttrFilter('retries', FilterOp.notEquals, '3')]).matches(log), isFalse);
     });
+
+    test('custom attributes: numbers, lists, booleans and > <', () {
+      final log = _log(attributes: {'duration_ms': 750, 'price': 9.5, 'tags': ['beta', 'ios'], 'premium': true});
+      bool m(String k, FilterOp op, [String v = '']) => LogQuery(filters: [AttrFilter(k, op, v)]).matches(log);
+      expect(m('duration_ms', FilterOp.greaterThan, '500'), isTrue);
+      expect(m('duration_ms', FilterOp.lessThan, '500'), isFalse);
+      expect(m('price', FilterOp.equals, '9.50'), isTrue);
+      expect(m('tags', FilterOp.equals, 'beta'), isTrue);
+      expect(m('tags', FilterOp.notEquals, 'beta'), isFalse);
+      expect(m('tags', FilterOp.notContains, 'android'), isTrue);
+      expect(m('premium', FilterOp.equals, 'True'), isTrue);
+      expect(m('missing', FilterOp.greaterThan, '1'), isFalse);
+      expect(m('error.type', FilterOp.notExists), isTrue);
+    });
+
+    test('new operators survive the URL', () {
+      const f = AttrFilter('duration_ms', FilterOp.greaterThan, '500');
+      expect(AttrFilter.decode(f.encode()), f);
+    });
   });
 
   group('volume buckets', () {

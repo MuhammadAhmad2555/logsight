@@ -26,6 +26,61 @@ class VolumeBucket {
   final int count;
 }
 
+/// Ranges with at most this many documents are counted in the app from one
+/// read instead of one count query per bar (30–40 round trips).
+const smallRangeLimit = 300;
+
+/// Counts documents per bar for a volume chart. [query] builds the Firestore
+/// query for a time window (documents need a `ts` timestamp field).
+///
+/// Small ranges, the common case, take two requests: a total count, then one
+/// read of the documents, counted per bar here. Larger ranges fall back to a
+/// count query per bar, which costs far fewer reads.
+Future<List<VolumeBucket>> countVolume(
+  Query<Map<String, dynamic>> Function(DateTime from, DateTime to) query, {
+  required DateTime from,
+  required DateTime to,
+  int maxBuckets = 40,
+}) async {
+  final buckets = buildBuckets(from, to, maxBuckets: maxBuckets);
+  final whole = query(from, to);
+  final total = (await whole.count().get()).count ?? 0;
+  if (total <= smallRangeLimit) {
+    final counts = List.filled(buckets.length, 0);
+    if (total > 0) {
+      final snap = await whole.limit(smallRangeLimit).get();
+      for (final d in snap.docs) {
+        final ts = (d.data()['ts'] as Timestamp?)?.toDate();
+        if (ts == null) continue;
+        final i = bucketIndex(buckets, ts);
+        if (i >= 0) counts[i]++;
+      }
+    }
+    return [for (var i = 0; i < buckets.length; i++) VolumeBucket(buckets[i].$1, buckets[i].$2, counts[i])];
+  }
+  final counts = await Future.wait(
+    buckets.map((b) async => (await query(b.$1, b.$2).count().get()).count ?? 0),
+  );
+  return [for (var i = 0; i < buckets.length; i++) VolumeBucket(buckets[i].$1, buckets[i].$2, counts[i])];
+}
+
+/// Which bucket [t] falls in (start inclusive, end exclusive), or -1.
+int bucketIndex(List<(DateTime, DateTime)> buckets, DateTime t) {
+  var lo = 0, hi = buckets.length - 1;
+  while (lo <= hi) {
+    final mid = (lo + hi) >> 1;
+    final (s, e) = buckets[mid];
+    if (t.isBefore(s)) {
+      hi = mid - 1;
+    } else if (!t.isBefore(e)) {
+      lo = mid + 1;
+    } else {
+      return mid;
+    }
+  }
+  return -1;
+}
+
 /// Runs log queries against Firestore.
 ///
 /// Firestore can only filter on equality, `in`, `array-contains` and one
@@ -123,18 +178,10 @@ class LogRepository {
     ).limit(limit).snapshots().map((s) => s.docs.map(LogEntry.fromDoc).where(q.matches).toList());
   }
 
-  /// Log counts over time for the volume chart. Each bar is one count query
-  /// (a count query costs one read per 1,000 logs counted).
-  Future<List<VolumeBucket>> volume(String pid, LogQuery q, {int maxBuckets = 40}) async {
+  /// Log counts over time for the volume chart (see [countVolume]).
+  Future<List<VolumeBucket>> volume(String pid, LogQuery q, {int maxBuckets = 40}) {
     final (from, to) = q.range.resolve();
-    final buckets = buildBuckets(from, to, maxBuckets: maxBuckets);
-    final counts = await Future.wait(
-      buckets.map((b) async {
-        final agg = await serverQuery(pid, q, from: b.$1, to: b.$2).count().get();
-        return agg.count ?? 0;
-      }),
-    );
-    return [for (var i = 0; i < buckets.length; i++) VolumeBucket(buckets[i].$1, buckets[i].$2, counts[i])];
+    return countVolume((f, t) => serverQuery(pid, q, from: f, to: t), from: from, to: to, maxBuckets: maxBuckets);
   }
 
   /// How many logs match the Firestore part of [q] in its time range.
@@ -148,6 +195,20 @@ class LogRepository {
   Future<Map<Severity, int>> severityTotals(String pid, LogQuery q) async {
     final (from, to) = q.range.resolve();
     final withoutSeverity = q.copyWith(severities: {});
+    // Small ranges: one read, counted here, instead of a query per level.
+    final whole = serverQuery(pid, withoutSeverity, from: from, to: to);
+    final total = (await whole.count().get()).count ?? 0;
+    if (total <= smallRangeLimit) {
+      final out = {for (final s in Severity.values) s: 0};
+      if (total > 0) {
+        final snap = await whole.limit(smallRangeLimit).get();
+        for (final d in snap.docs) {
+          final s = Severity.parse(d.data()['severity'] as String?);
+          out[s] = out[s]! + 1;
+        }
+      }
+      return out;
+    }
     final results = await Future.wait(
       Severity.values.map((s) async {
         final query = serverQuery(

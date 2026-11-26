@@ -14,6 +14,7 @@ import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/log_query.dart';
 import '../../data/insights.dart';
+import '../../data/known_fields.dart';
 import '../../data/log_repository.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -79,9 +80,22 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   LogRepository get _repo => ref.read(logRepositoryProvider);
   LogQuery get _q => widget.query;
 
+  /// Every field seen in this project's logs, kept across visits.
+  KnownFields? _fieldsStore;
+  KnownFields get _fields => _fieldsStore ??= KnownFields(ref.read(sharedPreferencesProvider), 'logs_${widget.projectId}');
+
+  void _seedKnown() {
+    _knownKeys.addAll(_fields.sortedKeys().where((k) => !logBuiltInFields.contains(k)));
+    for (final e in _fields.sortedValues().entries) {
+      _knownValues.putIfAbsent(e.key, () => <String>{}).addAll(e.value);
+    }
+    _knownValues.putIfAbsent('severity', () => <String>{}).addAll(Severity.values.map((s) => s.id));
+  }
+
   @override
   void initState() {
     super.initState();
+    _seedKnown();
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
@@ -96,6 +110,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         _knownServices.clear();
         _knownKeys.clear();
         _knownValues.clear();
+        _fieldsStore = null;
+        _seedKnown();
       }
       _reload();
     }
@@ -124,9 +140,22 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               const <ServiceInfo>[])
         s.name,
     };
+    final fields = _fields;
     for (final l in logs) {
       _knownServices.add(l.service);
       _addKeys(l.attributes, '');
+      fields.addMap(l.attributes);
+      for (final (k, v) in [
+        ('severity', l.severity.id),
+        ('userId', l.userId),
+        ('sessionId', l.sessionId),
+        ('traceId', l.traceId),
+        ('error.type', l.error?.type),
+      ]) {
+        if (v == null || v.isEmpty) continue;
+        _rememberFilterValue(k, v);
+        fields.add(k, v);
+      }
       // Logs from older SDKs or plain HTTP don't register their service.name;
       // add it to the project's service list so it appears in the switcher.
       if (l.service.isNotEmpty &&
@@ -138,6 +167,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             .catchError((_) {});
       }
     }
+    fields.save();
   }
 
   /// Records attribute names, including nested ones as dot paths (device.model).

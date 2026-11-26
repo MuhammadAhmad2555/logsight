@@ -33,10 +33,29 @@
 
   <title>LogSight</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Open connections early: Flutter's engine and fonts, then Firebase. -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin>
+
   <style>
     html, body { width: 100%; height: 100%; margin: 0; }
     html { background: #10131E; }
     body { overflow: hidden; background: transparent; }
+    /* Shown until Flutter draws its first frame. */
+    #loader {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      transition: opacity .25s ease;
+    }
+    #loader div {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 3px solid rgba(124, 131, 253, .25); border-top-color: #7C83FD;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
   <script>
     // Safari paints the areas around the page (status bar, address bar, the
@@ -77,6 +96,15 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <div id="loader" aria-label="Loading"><div></div></div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var l = document.getElementById('loader');
+      if (!l) return;
+      l.style.opacity = '0';
+      setTimeout(function () { l.remove(); }, 300);
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
