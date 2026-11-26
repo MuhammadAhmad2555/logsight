@@ -9,19 +9,23 @@ import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
+import '../../state/quick_access.dart';
 import '../auth/auth_layout.dart';
 import '../projects/projects_screen.dart';
 
 class _NavItem {
-  const _NavItem(this.segment, this.label, this.icon, this.selectedIcon);
+  const _NavItem(this.segment, this.label, this.icon, this.selectedIcon, {this.short});
   final String segment;
   final String label;
   final IconData icon;
   final IconData selectedIcon;
+
+  /// Shorter label for the phone dock's pill.
+  final String? short;
 }
 
 /// Sidebar section headings, keyed by the index of their first item.
-const _sectionStarts = {0: 'Analyze', 6: 'Configure'};
+const _sectionStarts = {0: 'Analyze', 8: 'Release', 9: 'Configure'};
 
 /// How many items fit in the phone tab bar; the rest go under "More".
 const _phoneTabs = 4;
@@ -36,6 +40,8 @@ const _items = [
   _NavItem('activity', 'Activity', Icons.bolt_outlined, Icons.bolt),
   _NavItem('logs', 'Logs', Icons.receipt_long_outlined, Icons.receipt_long),
   _NavItem('issues', 'Issues', Icons.bug_report_outlined, Icons.bug_report),
+  _NavItem('dashboards', 'Dashboards', Icons.dashboard_customize_outlined, Icons.dashboard_customize),
+  _NavItem('endpoints', 'Endpoints', Icons.alt_route_outlined, Icons.alt_route),
   _NavItem('people', 'People', Icons.people_outline, Icons.people),
   _NavItem(
     'alerts',
@@ -43,7 +49,8 @@ const _items = [
     Icons.notifications_outlined,
     Icons.notifications,
   ),
-  _NavItem('data', 'Data management', Icons.dataset_outlined, Icons.dataset),
+  _NavItem('flags', 'Feature flags', Icons.toggle_off_outlined, Icons.toggle_on, short: 'Flags'),
+  _NavItem('data', 'Data management', Icons.dataset_outlined, Icons.dataset, short: 'Data'),
   _NavItem('keys', 'Ingest keys', Icons.key_outlined, Icons.key),
   _NavItem('members', 'Members', Icons.group_outlined, Icons.group),
   _NavItem('settings', 'Settings', Icons.settings_outlined, Icons.settings),
@@ -73,6 +80,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) ref.read(lastProjectProvider.notifier).set(widget.projectId);
+      _recordVisit();
     });
   }
 
@@ -85,7 +93,29 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
           ref.read(lastProjectProvider.notifier).set(widget.projectId);
       });
     }
+    if (old.location != widget.location || old.projectId != widget.projectId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _recordVisit());
+    }
   }
+
+  QuickAccessController get _quick => ref.read(quickAccessProvider(widget.projectId).notifier);
+
+  /// The page's own path (no query), e.g. /p/x/logs.
+  bool get _isSectionPage => widget.location.split('/').where((s) => s.isNotEmpty).length == 3;
+
+  QuickLink _linkFor(int i) =>
+      QuickLink(path: '/p/${widget.projectId}/${_items[i].segment}', title: _items[i].label, kind: 'Page');
+
+  /// Adds section pages to Recents. Detail pages (a dashboard) add
+  /// themselves with their own name.
+  void _recordVisit() {
+    if (!mounted || !_isSectionPage) return;
+    final seg = widget.location.split('/').elementAtOrNull(3);
+    final i = _items.indexWhere((e) => e.segment == seg);
+    if (i >= 0) _quick.visit(_linkFor(i));
+  }
+
+  void _openLink(QuickLink l) => context.go(l.path);
 
   int get _index {
     final seg = widget.location.split('/').elementAtOrNull(3) ?? 'logs';
@@ -124,14 +154,47 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
           ),
         ];
         return SafeArea(
-          child: Padding(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.85),
+            child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Consumer(
+                  builder: (ctx, ref, _) {
+                    final quick = ref.watch(quickAccessProvider(widget.projectId));
+                    final recents = quick.recents.where((r) => r.path != widget.location).take(4).toList();
+                    void open(QuickLink l) {
+                      Navigator.pop(ctx);
+                      _openLink(l);
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (recents.isNotEmpty) ...[
+                          const _SheetLabel('Recents'),
+                          for (final l in recents) _QuickLinkRow(link: l, showTime: true, onTap: () => open(l)),
+                          const SizedBox(height: 10),
+                        ],
+                        if (quick.starred.isNotEmpty) ...[
+                          const _SheetLabel('Starred'),
+                          for (final l in quick.starred)
+                            _QuickLinkRow(
+                              link: l,
+                              onTap: () => open(l),
+                              onUnstar: () => ref.read(quickAccessProvider(widget.projectId).notifier).toggleStar(l),
+                            ),
+                          const SizedBox(height: 10),
+                        ],
+                      ],
+                    );
+                  },
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 14),
                   child: Text('More', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
                 ),
                 GridView.count(
@@ -146,6 +209,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                   ],
                 ),
               ],
+            ),
             ),
           ),
         );
@@ -169,6 +233,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
 
   Widget _wide(Project p) {
     // The user's choice wins; otherwise collapse automatically in narrow windows.
+    final quick = ref.watch(quickAccessProvider(widget.projectId));
     final pref = ref.watch(sidebarCollapsedProvider);
     final collapsed = pref ?? MediaQuery.sizeOf(context).width < 1100;
     return Scaffold(
@@ -244,12 +309,28 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                             child: ListView(
                               padding: const EdgeInsets.only(bottom: 8),
                               children: [
+                                if (quick.starred.isNotEmpty) ...[
+                                  _NavSection('Starred', collapsed: rail, first: true),
+                                  for (final l in quick.starred)
+                                    Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 1),
+                                      child: _SideNavTile(
+                                        item: _NavItem('', l.title, _iconForLink(l), _iconForLink(l)),
+                                        selected: false,
+                                        collapsed: rail,
+                                        starred: true,
+                                        caption: l.kind == 'Page' ? null : l.kind,
+                                        onStar: () => _quick.toggleStar(l),
+                                        onTap: () => _openLink(l),
+                                      ),
+                                    ),
+                                ],
                                 for (var i = 0; i < _items.length; i++) ...[
                                   if (_sectionStarts.containsKey(i))
                                     _NavSection(
                                       _sectionStarts[i]!,
                                       collapsed: rail,
-                                      first: i == 0,
+                                      first: i == 0 && quick.starred.isEmpty,
                                     ),
                                   Padding(
                                     padding: EdgeInsets.symmetric(
@@ -260,6 +341,8 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                                       item: _items[i],
                                       selected: i == _index,
                                       collapsed: rail,
+                                      starred: quick.isStarred(_linkFor(i).path),
+                                      onStar: () => _quick.toggleStar(_linkFor(i)),
                                       onTap: () => _go(i),
                                     ),
                                   ),
@@ -299,6 +382,29 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
         ),
         title: _ProjectSwitcher(current: p, compact: true),
         actions: [
+          if (_isSectionPage)
+            Builder(
+              builder: (context) {
+                final link = _linkFor(_index);
+                final starred = ref.watch(quickAccessProvider(widget.projectId)).isStarred(link.path);
+                return IconButton(
+                  tooltip: starred ? 'Unstar ${link.title}' : 'Star ${link.title}',
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    _quick.toggleStar(link);
+                  },
+                  icon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+                    child: Icon(
+                      starred ? Icons.star_rounded : Icons.star_outline_rounded,
+                      key: ValueKey(starred),
+                      color: starred ? const Color(0xFFF5B301) : null,
+                    ),
+                  ),
+                );
+              },
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: IconButton.filledTonal(
@@ -319,7 +425,7 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
       body: widget.child,
       bottomNavigationBar: _FloatingDock(
         selected: _index < _phoneTabs ? _index : _phoneTabs,
-        moreLabel: _index >= _phoneTabs ? _items[_index].label : 'More',
+        moreLabel: _index >= _phoneTabs ? (_items[_index].short ?? _items[_index].label) : 'More',
         moreIcon: _index >= _phoneTabs ? _items[_index].selectedIcon : Icons.grid_view_rounded,
         onSelect: (i) => i < _phoneTabs ? _go(i) : _showMore(),
       ),
@@ -383,7 +489,7 @@ class _FloatingDock extends StatelessWidget {
                 builder: (context, c) {
                   // The selected slot gets extra room for its label.
                   final n = slots.length;
-                  final wide = (c.maxWidth * 0.36).clamp(96.0, 150.0);
+                  final wide = (c.maxWidth * 0.42).clamp(96.0, 170.0);
                   final narrow = (c.maxWidth - wide) / (n - 1);
                   return Row(
                     children: [
@@ -528,6 +634,107 @@ class _DockItemState extends State<_DockItem> {
   }
 }
 
+/// Icon for a recent or starred link, from its path.
+IconData _iconForLink(QuickLink l) {
+  final parts = l.path.split('?').first.split('/').where((s) => s.isNotEmpty).toList();
+  final seg = parts.length > 2 ? parts[2] : '';
+  if (seg == 'dashboards' && parts.length > 3) return Icons.dashboard_customize_outlined;
+  return _items.where((e) => e.segment == seg).firstOrNull?.icon ?? Icons.link_rounded;
+}
+
+class _SheetLabel extends StatelessWidget {
+  const _SheetLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 2, 6, 6),
+      child: Text(
+        text.toUpperCase(),
+        style: theme.textTheme.labelSmall?.copyWith(
+          letterSpacing: 1.0,
+          fontWeight: FontWeight.w700,
+          color: theme.colorScheme.outline,
+        ),
+      ),
+    );
+  }
+}
+
+/// A Recents / Starred row: icon, title, kind and (for recents) when.
+class _QuickLinkRow extends StatelessWidget {
+  const _QuickLinkRow({required this.link, required this.onTap, this.showTime = false, this.onUnstar});
+
+  final QuickLink link;
+  final VoidCallback onTap;
+  final bool showTime;
+  final VoidCallback? onUnstar;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: scheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(_iconForLink(link), size: 18, color: scheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        link.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(link.kind, style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+                  ],
+                ),
+              ),
+              if (showTime && link.at != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, right: 4),
+                  child: Text(timeAgo(link.at), style: theme.textTheme.labelSmall?.copyWith(color: scheme.outline)),
+                ),
+              if (onUnstar != null)
+                IconButton(
+                  tooltip: 'Unstar',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onUnstar,
+                  icon: const Icon(Icons.star_rounded, color: Color(0xFFF5B301), size: 20),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A tile in the "More" sheet: a tinted icon square above its label.
 class _MoreTile extends StatelessWidget {
   const _MoreTile({required this.label, required this.icon, required this.selected, required this.onTap});
@@ -601,12 +808,22 @@ class _SideNavTile extends StatefulWidget {
     required this.selected,
     required this.onTap,
     this.collapsed = false,
+    this.starred = false,
+    this.onStar,
+    this.caption,
   });
 
   final _NavItem item;
   final bool selected;
   final bool collapsed;
   final VoidCallback onTap;
+
+  /// With [onStar], a star shows on hover (always when [starred]).
+  final bool starred;
+  final VoidCallback? onStar;
+
+  /// Small grey text after the label (e.g. "Dashboard").
+  final String? caption;
 
   @override
   State<_SideNavTile> createState() => _SideNavTileState();
@@ -706,6 +923,24 @@ class _SideNavTileState extends State<_SideNavTile> {
                                 ),
                               ),
                             ),
+                            if (widget.caption != null && !_hover)
+                              Text(
+                                widget.caption!,
+                                style: theme.textTheme.labelSmall?.copyWith(color: scheme.outline),
+                              ),
+                            if (widget.onStar != null && (_hover || widget.starred))
+                              InkResponse(
+                                radius: 14,
+                                onTap: widget.onStar,
+                                child: Tooltip(
+                                  message: widget.starred ? 'Unstar' : 'Star',
+                                  child: Icon(
+                                    widget.starred ? Icons.star_rounded : Icons.star_outline_rounded,
+                                    size: 16,
+                                    color: widget.starred ? const Color(0xFFF5B301) : scheme.outline,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                 ),

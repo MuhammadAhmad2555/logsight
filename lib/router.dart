@@ -11,6 +11,10 @@ import 'features/activity/definitions_screen.dart';
 import 'features/alerts/alerts_screen.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/auth/verify_email_screen.dart';
+import 'features/dashboards/dashboard_screen.dart';
+import 'features/dashboards/dashboards_screen.dart';
+import 'features/endpoints/endpoints_screen.dart';
+import 'features/flags/flags_screen.dart';
 import 'features/issues/issues_screen.dart';
 import 'features/keys/keys_screen.dart';
 import 'features/logs/logs_screen.dart';
@@ -101,6 +105,31 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/p/:pid/issues',
             pageBuilder: (context, state) =>
                 NoTransitionPage(child: IssuesScreen(projectId: state.pathParameters['pid']!)),
+          ),
+          GoRoute(
+            path: '/p/:pid/dashboards',
+            pageBuilder: (context, state) =>
+                NoTransitionPage(child: DashboardsScreen(projectId: state.pathParameters['pid']!)),
+          ),
+          GoRoute(
+            path: '/p/:pid/dashboards/:id',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: DashboardScreen(
+                key: ValueKey(state.pathParameters['id']),
+                projectId: state.pathParameters['pid']!,
+                dashboardId: state.pathParameters['id']!,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/p/:pid/endpoints',
+            pageBuilder: (context, state) =>
+                NoTransitionPage(child: EndpointsScreen(projectId: state.pathParameters['pid']!)),
+          ),
+          GoRoute(
+            path: '/p/:pid/flags',
+            pageBuilder: (context, state) =>
+                NoTransitionPage(child: FlagsScreen(projectId: state.pathParameters['pid']!)),
           ),
           GoRoute(
             path: '/p/:pid/alerts',

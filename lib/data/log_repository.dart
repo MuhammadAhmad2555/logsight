@@ -141,6 +141,7 @@ class LogRepository {
     DocumentSnapshot<Map<String, dynamic>>? after,
     int want = 50,
     int maxScan = 1000,
+    int pageSize = LogRepository.pageSize,
   }) async {
     final (from, to) = q.range.resolve();
     final base = serverQuery(pid, q, from: from, to: to);

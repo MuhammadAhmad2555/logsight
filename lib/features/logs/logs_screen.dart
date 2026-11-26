@@ -13,11 +13,14 @@ import '../../core/severity.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
 import '../../data/log_query.dart';
+import '../../data/dashboards.dart';
 import '../../data/insights.dart';
 import '../../data/known_fields.dart';
 import '../../data/log_repository.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
+import '../../state/quick_access.dart';
+import '../dashboards/dashboards_screen.dart';
 import 'filter_controls.dart';
 import 'log_detail.dart';
 import 'volume_chart.dart';
@@ -751,6 +754,18 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             section: 'View',
           ),
           const MenuEntry<Object>(
+            '_dash_count',
+            'Add count to dashboard…',
+            icon: Icons.numbers_rounded,
+            section: 'Dashboards',
+          ),
+          const MenuEntry<Object>(
+            '_dash_chart',
+            'Add chart to dashboard…',
+            icon: Icons.add_chart_rounded,
+            section: 'Dashboards',
+          ),
+          const MenuEntry<Object>(
             '_save',
             'Save current view…',
             icon: Icons.bookmark_add_outlined,
@@ -799,6 +814,19 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         switch (v) {
           case '_chart':
             setState(() => _chartPref = !(_chartVisible ?? true));
+          case '_dash_count' || '_dash_chart':
+            addTileToDashboard(
+              context,
+              ref,
+              widget.projectId,
+              DashboardTile(
+                id: DashboardTile.newId(),
+                title: _tileTitle(),
+                source: TileSource.logs,
+                viz: v == '_dash_chart' ? TileViz.bars : TileViz.number,
+                query: DashboardTile.queryWithoutRange(_q.toQueryParameters()),
+              ),
+            );
           case '_save':
             _saveCurrentView(currentQuery);
           case '_txt':
@@ -806,7 +834,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
           case '_csv':
             _exportText(csv: true);
           case final SavedView view:
-            context.go('/p/${widget.projectId}/logs?${view.query}');
+            final path = '/p/${widget.projectId}/logs?${view.query}';
+            ref
+                .read(quickAccessProvider(widget.projectId).notifier)
+                .visit(QuickLink(path: path, title: view.name, kind: 'Saved view'));
+            context.go(path);
         }
       },
       builder: (context, open) => Container(
@@ -829,6 +861,17 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 
   /// Chart visibility from the last layout (null before the first one).
   bool? _chartVisible;
+
+  /// A default tile title describing the current filters, e.g. "ERROR · keyo_ios".
+  String _tileTitle() {
+    final parts = <String>[
+      if (_q.severities.isNotEmpty) Severity.values.where(_q.severities.contains).map((s) => s.label).join(' + '),
+      if (_q.services.isNotEmpty) _q.services.join(', '),
+      if (_q.search.trim().isNotEmpty) '“${_q.search.trim()}”',
+      for (final f in _q.filters.take(2)) f.label,
+    ];
+    return parts.isEmpty ? 'All logs' : parts.join(' · ');
+  }
 
   Future<void> _saveCurrentView(String currentQuery) async {
     final name = await promptText(

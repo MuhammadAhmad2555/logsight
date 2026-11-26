@@ -8,6 +8,9 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 
 import 'src/file_sink.dart';
+import 'src/flags.dart';
+
+export 'src/flags.dart' show FeatureFlag, FlagCondition, rolloutBucket;
 
 enum LogLevel { trace, debug, info, warn, error, fatal }
 
@@ -197,6 +200,7 @@ class AppTrackLogger {
     final previous = _distinctId;
     _distinctId = id;
     this.userId = id;
+    _personProps.addAll(properties ?? const {});
     final aliases = previous != id ? [previous] : const <String>[];
     _person(id, properties ?? const {}, aliases: aliases);
     capture(r'$identify', properties: {if (previous != id) r'$anon_distinct_id': previous});
@@ -205,6 +209,7 @@ class AppTrackLogger {
   /// Sets properties on the current person (merged with existing ones).
   void setPersonProperties(Map<String, Object?> properties) {
     if (_closed || properties.isEmpty) return;
+    _personProps.addAll(properties);
     _person(_distinctId, properties);
   }
 
@@ -212,7 +217,61 @@ class AppTrackLogger {
   void reset() {
     _distinctId = _anonId();
     userId = null;
+    _personProps.clear();
   }
+
+  // =========================================================== FEATURE FLAGS
+
+  /// Properties of the current person (from [identify] and
+  /// [setPersonProperties]); feature flag conditions are checked against them.
+  final Map<String, Object?> _personProps = {};
+  Map<String, FeatureFlag> _flags = const {};
+  DateTime? _flagsLoadedAt;
+
+  /// When flags were last loaded (null before the first [reloadFeatureFlags]).
+  DateTime? get featureFlagsLoadedAt => _flagsLoadedAt;
+
+  /// Loads the project's feature flags. Call at startup (and e.g. when the
+  /// app resumes) before asking [isFeatureEnabled]. Returns false if they
+  /// couldn't be loaded; the previously loaded flags are kept.
+  Future<bool> reloadFeatureFlags() async {
+    final flags = <String, FeatureFlag>{};
+    String? pageToken;
+    try {
+      do {
+        final uri = Uri.parse(
+          'https://firestore.googleapis.com/v1/$_root/flags',
+        ).replace(queryParameters: {'pageSize': '300', 'pageToken': ?pageToken});
+        final res = await _client.get(uri).timeout(const Duration(seconds: 15));
+        if (res.statusCode != 200) return false;
+        final body = jsonDecode(res.body) as Map<String, dynamic>;
+        for (final doc in (body['documents'] as List?) ?? const []) {
+          final f = FeatureFlag.fromFirestore(doc as Map<String, dynamic>);
+          if (f != null) flags[f.key] = f;
+        }
+        pageToken = body['nextPageToken'] as String?;
+      } while (pageToken != null && pageToken.isNotEmpty);
+    } catch (_) {
+      return false;
+    }
+    _flags = flags;
+    _flagsLoadedAt = DateTime.now();
+    return true;
+  }
+
+  /// Whether flag [key] is on for the current person. Unknown flags (or
+  /// flags not loaded yet) return [fallback]. Extra [properties] are checked
+  /// on top of the person's.
+  bool isFeatureEnabled(String key, {bool fallback = false, Map<String, Object?>? properties}) {
+    final f = _flags[key];
+    if (f == null) return fallback;
+    return f.isEnabledFor(_distinctId, {..._personProps, ...?properties});
+  }
+
+  /// Every loaded flag and whether it is on for the current person.
+  Map<String, bool> get featureFlags => {
+    for (final f in _flags.values) f.key: f.isEnabledFor(_distinctId, _personProps),
+  };
 
   String _anonId() => 'anon_${_id()}';
 
@@ -301,6 +360,85 @@ class AppTrackLogger {
     Object? error,
     StackTrace? stackTrace,
     String? reason,
+  }) => _log(
+    level,
+    message,
+    attributes: attributes,
+    traceId: traceId,
+    timestamp: timestamp,
+    error: error,
+    stackTrace: stackTrace,
+    reason: reason,
+  );
+
+  /// Logs one API request for the Endpoints page: calls, error rate and
+  /// latency per route. Use the route pattern, not the full URL, so calls
+  /// group together:
+  ///
+  /// ```dart
+  /// final sw = Stopwatch()..start();
+  /// final res = await http.get(uri);
+  /// appTrack.request('GET', '/api/orders/:id', statusCode: res.statusCode, duration: sw.elapsed);
+  /// ```
+  ///
+  /// 5xx (or a thrown [error] without a status) is logged as an error, 4xx as
+  /// a warning, anything else as info.
+  void request(
+    String method,
+    String route, {
+    int? statusCode,
+    Duration? duration,
+    Map<String, Object?>? attributes,
+    String? traceId,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    final m = method.trim().toUpperCase();
+    final r = route.trim();
+    if (r.isEmpty) return;
+    final ms = duration == null ? null : duration.inMicroseconds / 1000;
+    final level = statusCode == null
+        ? (error != null ? LogLevel.error : LogLevel.info)
+        : (statusCode >= 500 ? LogLevel.error : (statusCode >= 400 ? LogLevel.warn : LogLevel.info));
+    final text = [
+      m,
+      r,
+      if (statusCode != null) '$statusCode',
+      if (ms != null) '(${ms.round()} ms)',
+      if (statusCode == null && error != null) 'failed',
+    ].join(' ');
+    final http = <String, Object?>{
+      'http.method': m,
+      'http.route': r,
+      'http.status_code': ?statusCode,
+      if (ms != null) 'duration_ms': (ms * 10).round() / 10,
+    };
+    _log(
+      level,
+      text,
+      // Request fields first (so the 64-attribute cap never drops them) and
+      // last (so they win over same-named custom attributes).
+      attributes: {...http, ...?attributes, ...http},
+      traceId: traceId,
+      error: error,
+      stackTrace: stackTrace,
+      extraTokens: const [requestToken],
+    );
+  }
+
+  /// Token added to request logs so the dashboard can find them quickly.
+  static const requestToken = 'http_request';
+
+  void _log(
+    LogLevel level,
+    String message, {
+    Map<String, Object?>? attributes,
+    String? traceId,
+    DateTime? timestamp,
+    Object? error,
+    StackTrace? stackTrace,
+    String? reason,
+    List<String> extraTokens = const [],
   }) {
     if (_closed || level.index < minLevel.index) return;
     // Error details are only kept on error and fatal logs.
@@ -333,7 +471,9 @@ class AppTrackLogger {
       'message': text,
       'service': service,
       'key': ingestKey,
-      'tokens': tokenize(text),
+      'tokens': extraTokens.isEmpty
+          ? tokenize(text)
+          : {...extraTokens, ...tokenize(text, maxTokens: 64 - extraTokens.length)}.toList(),
       if (attrs.isNotEmpty) 'attributes': attrs,
       if (userId != null) 'userId': userId,
       if (sessionId != null) 'sessionId': sessionId,

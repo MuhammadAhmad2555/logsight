@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/activity.dart';
 import '../data/activity_repository.dart';
 import '../data/auth_repository.dart';
+import '../data/dashboards.dart';
+import '../data/flags.dart';
 import '../data/insights_repository.dart';
 import '../data/log_repository.dart';
 import '../data/models.dart';
@@ -187,4 +189,24 @@ class ActivityColumnsController extends Notifier<List<String>> {
 
 final activityColumnsProvider = NotifierProvider<ActivityColumnsController, List<String>>(
   ActivityColumnsController.new,
+);
+
+// ------------------------------------------------------- flags & dashboards
+
+final flagsRepositoryProvider = Provider<FlagsRepository>((ref) => FlagsRepository(ref.watch(firestoreProvider)));
+
+final flagsProvider = StreamProvider.family<List<FeatureFlag>, String>(
+  (ref, pid) => ref.watch(flagsRepositoryProvider).watch(pid),
+);
+
+final dashboardsRepositoryProvider = Provider<DashboardsRepository>(
+  (ref) => DashboardsRepository(ref.watch(firestoreProvider)),
+);
+
+final dashboardsProvider = StreamProvider.family<List<Dashboard>, String>(
+  (ref, pid) => ref.watch(dashboardsRepositoryProvider).watchAll(pid),
+);
+
+final dashboardProvider = StreamProvider.family<Dashboard?, (String, String)>(
+  (ref, args) => ref.watch(dashboardsRepositoryProvider).watch(args.$1, args.$2),
 );

@@ -377,6 +377,7 @@ class _FilterDialogState extends State<_FilterDialog> {
     if (mobile) {
       return Dialog.fullscreen(
         child: Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surface,
           appBar: AppBar(
             title: const Text('Add filter'),
             leading: IconButton(

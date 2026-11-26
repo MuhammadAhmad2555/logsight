@@ -10,11 +10,14 @@ import 'package:intl/intl.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
+import '../../core/app_menu.dart';
 import '../../data/activity.dart';
+import '../../data/dashboards.dart';
 import '../../data/known_fields.dart';
 import '../../data/log_query.dart';
 import '../../data/log_repository.dart';
 import '../../state/providers.dart';
+import '../dashboards/dashboards_screen.dart';
 import '../logs/filter_controls.dart';
 import '../logs/volume_chart.dart';
 
@@ -459,6 +462,32 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             tooltip: 'Columns',
             onPressed: _editColumns,
             icon: const Icon(Icons.view_column_outlined),
+          ),
+          AppMenuAnchor<TileViz>(
+            tooltip: 'Add to dashboard',
+            searchable: false,
+            showChecks: false,
+            minWidth: 230,
+            entries: () => const [
+              MenuEntry(TileViz.number, 'Add count to dashboard…', icon: Icons.numbers_rounded),
+              MenuEntry(TileViz.bars, 'Add chart to dashboard…', icon: Icons.add_chart_rounded),
+            ],
+            onSelected: (viz) => addTileToDashboard(
+              context,
+              ref,
+              widget.projectId,
+              DashboardTile(
+                id: DashboardTile.newId(),
+                title: _q.events.isEmpty ? 'All events' : _q.events.join(', '),
+                source: TileSource.events,
+                viz: viz,
+                query: DashboardTile.queryWithoutRange(_q.toQueryParameters()),
+              ),
+            ),
+            builder: (context, open) => const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(Icons.dashboard_customize_outlined),
+            ),
           ),
           IconButton(
             tooltip: 'Refresh',

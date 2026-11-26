@@ -206,6 +206,69 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // ------------------------------------------------------- feature flags
+      // Doc ID = flag key. Apps read flags without signing in (like PostHog's
+      // flag API with the public project key), so flags must not hold secrets.
+      // Admins edit them.
+      match /flags/{flagKey} {
+        function validCondition(c) {
+          return c is map
+            && c.keys().hasOnly(['property', 'op', 'value'])
+            && c.property is string && c.property.size() > 0 && c.property.size() <= 200
+            && c.op in ['equals', 'notEquals', 'contains', 'notContains', 'greaterThan', 'lessThan',
+                        'exists', 'notExists']
+            && c.value is string && c.value.size() <= 500;
+        }
+
+        function validFlag(d) {
+          return d.keys().hasOnly(['name', 'description', 'enabled', 'rollout', 'conditions',
+                                   'updatedBy', 'updatedAt'])
+            && flagKey.matches('^[a-z0-9][a-z0-9_-]{0,63}$')
+            && d.name is string && d.name.size() <= 100
+            && d.description is string && d.description.size() <= 500
+            && d.enabled is bool
+            && d.rollout is int && d.rollout >= 0 && d.rollout <= 100
+            && d.conditions is list && d.conditions.size() <= 10
+            && (d.conditions.size() < 1 || validCondition(d.conditions[0]))
+            && (d.conditions.size() < 2 || validCondition(d.conditions[1]))
+            && (d.conditions.size() < 3 || validCondition(d.conditions[2]))
+            && (d.conditions.size() < 4 || validCondition(d.conditions[3]))
+            && (d.conditions.size() < 5 || validCondition(d.conditions[4]))
+            && (d.conditions.size() < 6 || validCondition(d.conditions[5]))
+            && (d.conditions.size() < 7 || validCondition(d.conditions[6]))
+            && (d.conditions.size() < 8 || validCondition(d.conditions[7]))
+            && (d.conditions.size() < 9 || validCondition(d.conditions[8]))
+            && (d.conditions.size() < 10 || validCondition(d.conditions[9]))
+            && d.updatedBy == request.auth.uid
+            && d.updatedAt == request.time;
+        }
+
+        allow read: if true;
+        allow create, update: if isAdmin(pid) && validFlag(request.resource.data);
+        allow delete: if isAdmin(pid);
+      }
+
+      // ---------------------------------------------------------- dashboards
+      // Any member can build and edit dashboards (like PostHog); the creator
+      // or an admin can delete them.
+      match /dashboards/{dashboardId} {
+        function validDashboard(d) {
+          return d.keys().hasOnly(['name', 'description', 'tiles', 'range', 'createdBy', 'updatedAt'])
+            && d.name is string && d.name.size() > 0 && d.name.size() <= 80
+            && d.description is string && d.description.size() <= 500
+            && d.tiles is list && d.tiles.size() <= 30
+            && d.range in ['15m', '1h', '6h', '24h', '7d', '30d', '90d']
+            && d.updatedAt == request.time;
+        }
+
+        allow read: if isMember(pid);
+        allow create: if isMember(pid) && validDashboard(request.resource.data)
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if isMember(pid) && validDashboard(request.resource.data)
+          && !changed().hasAny(['createdBy']);
+        allow delete: if isAdmin(pid) || (isMember(pid) && resource.data.createdBy == request.auth.uid);
+      }
+
       // ============================================================ ACTIVITY
       // Product events (capture/screen/identify), people and definitions.
       // Written by apps with an ingest key; read by project members.
