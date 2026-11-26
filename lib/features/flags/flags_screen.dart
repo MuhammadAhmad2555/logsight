@@ -8,6 +8,7 @@ import '../../core/ui.dart';
 import '../../data/flags.dart';
 import '../../data/log_query.dart';
 import '../../state/providers.dart';
+import '../help/help_screen.dart' show HelpLink;
 
 /// Feature flags: turn features on or off in your apps without a release,
 /// roll them out to a percentage of people, or target people by property.
@@ -72,6 +73,7 @@ class FlagsScreen extends ConsumerWidget {
         Row(
           children: [
             Expanded(child: Text('Feature flags', style: theme.textTheme.headlineSmall)),
+            HelpLink(projectId: projectId, topic: 'flags'),
             if (canEdit)
               FilledButton.icon(
                 onPressed: () => _edit(context, ref),

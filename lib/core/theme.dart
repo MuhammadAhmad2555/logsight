@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// LogSight design system.
 ///
@@ -29,6 +30,17 @@ abstract final class Brand {
 const _font = 'Inter';
 const _desktopRadius = 12.0;
 const _mobileRadius = 14.0;
+
+/// Status/navigation bar style for a theme: dark icons on the light theme,
+/// light icons on the dark theme, with see-through bars.
+SystemUiOverlayStyle systemBarsFor(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
+    statusBarColor: Colors.transparent,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarContrastEnforced: false,
+  );
+}
 
 ThemeData buildTheme(Brightness brightness, {bool? mobileOverride}) {
   final mobile = mobileOverride ?? isMobilePlatform;
@@ -108,6 +120,9 @@ ThemeData buildTheme(Brightness brightness, {bool? mobileOverride}) {
     appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
+      // A transparent bar reads as "dark" to Flutter, which would always pick
+      // white status-bar icons; set them from the theme instead.
+      systemOverlayStyle: systemBarsFor(brightness),
       foregroundColor: ink,
       elevation: 0,
       scrolledUnderElevation: 0,

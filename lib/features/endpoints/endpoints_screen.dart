@@ -14,6 +14,7 @@ import '../../data/log_repository.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../flags/flags_screen.dart' show CodeBlock;
+import '../help/help_screen.dart' show HelpLink;
 import '../logs/filter_controls.dart';
 
 enum _Sort {
@@ -101,7 +102,12 @@ class _EndpointsScreenState extends ConsumerState<EndpointsScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
         children: [
-          Text('Endpoints', style: theme.textTheme.headlineSmall),
+          Row(
+            children: [
+              Expanded(child: Text('Endpoints', style: theme.textTheme.headlineSmall)),
+              HelpLink(projectId: widget.projectId, topic: 'endpoints-sdk'),
+            ],
+          ),
           const SizedBox(height: 4),
           Text(
             'Calls, errors and latency of every API route your apps call or serve.',

@@ -596,6 +596,9 @@ class _AppMenuAnchorState<T> extends State<AppMenuAnchor<T>> {
   bool _open = false;
 
   Future<void> _show() async {
+    // Keep the callback: if the page rebuilds this button while the menu is
+    // open (e.g. the keyboard changes the layout), the choice still counts.
+    final onSelected = widget.onSelected;
     setState(() => _open = true);
     final v = await showAppMenu<T>(
       context,
@@ -612,9 +615,17 @@ class _AppMenuAnchorState<T> extends State<AppMenuAnchor<T>> {
       customLabel: widget.customLabel,
       showChecks: widget.showChecks,
     );
-    if (!mounted) return;
-    setState(() => _open = false);
-    if (v != null) widget.onSelected?.call(v);
+    if (mounted) setState(() => _open = false);
+    if (v == null) return;
+    if (mounted) {
+      widget.onSelected?.call(v);
+    } else {
+      // Most callbacks only update the page's state, which still exists. One
+      // that needs this button's own context (gone now) can't run; skip it.
+      try {
+        onSelected?.call(v);
+      } catch (_) {}
+    }
   }
 
   @override

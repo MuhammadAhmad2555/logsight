@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,8 +44,11 @@ class LogSightApp extends ConsumerWidget {
             ThemeMode.system => platformBrightness,
           };
           if (kIsWeb) setBrowserChrome(brightness);
-          if (!kIsWeb || constraints.maxWidth >= 700) return content;
-          return Theme(data: buildTheme(brightness, mobileOverride: true), child: content);
+          // Status bar icons follow the app's theme (screens without an
+          // AppBar too); AppBars set the same style via the theme.
+          final themed = AnnotatedRegion<SystemUiOverlayStyle>(value: systemBarsFor(brightness), child: content);
+          if (!kIsWeb || constraints.maxWidth >= 700) return themed;
+          return Theme(data: buildTheme(brightness, mobileOverride: true), child: themed);
         },
       ),
     );

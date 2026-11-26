@@ -15,6 +15,7 @@ import 'features/dashboards/dashboard_screen.dart';
 import 'features/dashboards/dashboards_screen.dart';
 import 'features/endpoints/endpoints_screen.dart';
 import 'features/flags/flags_screen.dart';
+import 'features/help/help_screen.dart';
 import 'features/issues/issues_screen.dart';
 import 'features/keys/keys_screen.dart';
 import 'features/logs/logs_screen.dart';
@@ -125,6 +126,15 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/p/:pid/endpoints',
             pageBuilder: (context, state) =>
                 NoTransitionPage(child: EndpointsScreen(projectId: state.pathParameters['pid']!)),
+          ),
+          GoRoute(
+            path: '/p/:pid/help',
+            pageBuilder: (context, state) => NoTransitionPage(
+              child: HelpScreen(
+                projectId: state.pathParameters['pid']!,
+                topicId: state.uri.queryParameters['topic'],
+              ),
+            ),
           ),
           GoRoute(
             path: '/p/:pid/flags',

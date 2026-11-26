@@ -9,6 +9,7 @@ import '../../core/ui.dart';
 import '../../data/dashboards.dart';
 import '../../state/providers.dart';
 import '../../state/quick_access.dart';
+import '../help/help_screen.dart' show HelpLink;
 
 String dashboardPath(String pid, String id) => '/p/$pid/dashboards/$id';
 
@@ -117,6 +118,7 @@ class DashboardsScreen extends ConsumerWidget {
         Row(
           children: [
             Expanded(child: Text('Dashboards', style: theme.textTheme.headlineSmall)),
+            HelpLink(projectId: projectId, topic: 'dashboards'),
             FilledButton.icon(
               onPressed: () => _create(context, ref),
               icon: const Icon(Icons.add_rounded),

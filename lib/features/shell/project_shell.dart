@@ -54,6 +54,7 @@ const _items = [
   _NavItem('keys', 'Ingest keys', Icons.key_outlined, Icons.key),
   _NavItem('members', 'Members', Icons.group_outlined, Icons.group),
   _NavItem('settings', 'Settings', Icons.settings_outlined, Icons.settings),
+  _NavItem('help', 'Help & docs', Icons.help_outline_rounded, Icons.help_rounded, short: 'Help'),
 ];
 
 /// Navigation around a project's pages: a sidebar on wide screens and a

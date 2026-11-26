@@ -21,6 +21,7 @@ import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../../state/quick_access.dart';
 import '../dashboards/dashboards_screen.dart';
+import '../help/help_screen.dart' show helpPath;
 import 'filter_controls.dart';
 import 'log_detail.dart';
 import 'volume_chart.dart';
@@ -484,9 +485,16 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     final wide = isWide(context);
     final content = LayoutBuilder(
       builder: (context, c) {
+        // Decide the layout from the height without the on-screen keyboard.
+        // Otherwise opening a search box (e.g. in the Group by menu) in
+        // portrait shrinks the page, the layout switches, and the open menu's
+        // button is rebuilt and loses the selection.
+        final view = View.of(context);
+        final keyboard = view.viewInsets.bottom / view.devicePixelRatio;
+        final layoutHeight = c.maxHeight + keyboard;
         // Short windows hide the chart automatically (the ⋯ menu can bring it
         // back) so the table keeps most of the height.
-        final showChart = _chartPref ?? c.maxHeight >= 760;
+        final showChart = _chartPref ?? layoutHeight >= 760;
         _chartVisible = showChart;
         final header = <Widget>[
           _toolbar(wide),
@@ -521,7 +529,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         );
         // Very short windows: the page scrolls and the table keeps a usable
         // height, so events are always reachable.
-        if (c.maxHeight < 600) {
+        if (layoutHeight < 600) {
           return SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -808,6 +816,18 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             icon: Icons.table_chart_outlined,
             section: 'Export',
           ),
+          const MenuEntry<Object>(
+            '_help',
+            'How to use Logs',
+            icon: Icons.help_outline_rounded,
+            section: 'Help',
+          ),
+          const MenuEntry<Object>(
+            '_help_sdk',
+            'What apps can send',
+            icon: Icons.code_rounded,
+            section: 'Help',
+          ),
         ];
       },
       onSelected: (v) {
@@ -833,6 +853,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             _exportText();
           case '_csv':
             _exportText(csv: true);
+          case '_help':
+            context.go(helpPath(widget.projectId, 'logs-page'));
+          case '_help_sdk':
+            context.go(helpPath(widget.projectId, 'logs-sdk'));
           case final SavedView view:
             final path = '/p/${widget.projectId}/logs?${view.query}';
             ref
