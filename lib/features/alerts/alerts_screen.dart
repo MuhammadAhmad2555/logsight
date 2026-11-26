@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/severity.dart';
 import '../../core/ui.dart';
@@ -319,25 +320,25 @@ class _AlertDialogState extends State<_AlertDialog> {
                       : (v!.trim().length > 80 ? 'Keep it under 80 characters' : null),
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<AlertType>(
-                  initialValue: _type,
-                  decoration: const InputDecoration(labelText: 'When'),
-                  items: [for (final t in AlertType.values) DropdownMenuItem(value: t, child: Text(t.label))],
-                  onChanged: (v) => setState(() => _type = v ?? _type),
+                AppSelectField<AlertType>(
+                  label: 'When',
+                  value: _type,
+                  entries: [for (final t in AlertType.values) MenuEntry(t, t.label)],
+                  onChanged: (v) => setState(() => _type = v),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 6, 4, 0),
                   child: Text(_type.description, style: Theme.of(context).textTheme.bodySmall),
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<String?>(
-                  initialValue: _service,
-                  decoration: const InputDecoration(labelText: 'service.name'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('All services')),
-                    for (final s in services) DropdownMenuItem(value: s, child: Text(s)),
+                AppSelectField<String>(
+                  label: 'service.name',
+                  value: _service ?? '',
+                  entries: [
+                    const MenuEntry('', 'All services', icon: Icons.layers_outlined),
+                    for (final s in services) MenuEntry(s, s, mono: true, section: 'Services'),
                   ],
-                  onChanged: (v) => setState(() => _service = v),
+                  onChanged: (v) => setState(() => _service = v.isEmpty ? null : v),
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -357,18 +358,18 @@ class _AlertDialogState extends State<_AlertDialog> {
                       const SizedBox(width: 12),
                     ],
                     Expanded(
-                      child: DropdownButtonFormField<int>(
-                        initialValue: _window,
-                        decoration: const InputDecoration(labelText: 'Within'),
-                        items: const [
-                          DropdownMenuItem(value: 5, child: Text('5 minutes')),
-                          DropdownMenuItem(value: 15, child: Text('15 minutes')),
-                          DropdownMenuItem(value: 30, child: Text('30 minutes')),
-                          DropdownMenuItem(value: 60, child: Text('1 hour')),
-                          DropdownMenuItem(value: 360, child: Text('6 hours')),
-                          DropdownMenuItem(value: 1440, child: Text('24 hours')),
+                      child: AppSelectField<int>(
+                        label: 'Within',
+                        value: _window,
+                        entries: const [
+                          MenuEntry(5, '5 minutes'),
+                          MenuEntry(15, '15 minutes'),
+                          MenuEntry(30, '30 minutes'),
+                          MenuEntry(60, '1 hour'),
+                          MenuEntry(360, '6 hours'),
+                          MenuEntry(1440, '24 hours'),
                         ],
-                        onChanged: (v) => setState(() => _window = v ?? _window),
+                        onChanged: (v) => setState(() => _window = v),
                       ),
                     ),
                   ],

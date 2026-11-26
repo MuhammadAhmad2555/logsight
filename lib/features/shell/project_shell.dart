@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
@@ -136,38 +137,59 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                width: collapsed ? 76 : 236,
+                width: collapsed ? 72 : 240,
                 child: GlassPanel(
-                  radius: 26,
+                  radius: 24,
                   child: LayoutBuilder(
                     builder: (context, c) {
                       // Switch to icons as soon as the animating width gets tight,
                       // so labels never overflow mid-animation.
                       final rail = c.maxWidth < 170;
+                      final hPad = rail ? 12.0 : 12.0;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(rail ? 0 : 18, 20, rail ? 0 : 16, 16),
-                            child: Align(
-                              alignment: rail ? Alignment.center : Alignment.centerLeft,
-                              child: AppLogo(size: 28, showName: !rail),
+                          // Logo + collapse toggle.
+                          SizedBox(
+                            height: 64,
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: rail ? 0 : 16),
+                              child: rail
+                                  ? Center(
+                                      child: _IconToggle(
+                                        tooltip: 'Expand sidebar',
+                                        icon: Icons.keyboard_double_arrow_right_rounded,
+                                        onTap: () => ref.read(sidebarCollapsedProvider.notifier).set(false),
+                                        child: const AppLogo(size: 26, showName: false),
+                                      ),
+                                    )
+                                  : Row(
+                                      children: [
+                                        const AppLogo(size: 26),
+                                        const Spacer(),
+                                        _IconToggle(
+                                          tooltip: 'Collapse sidebar',
+                                          icon: Icons.keyboard_double_arrow_left_rounded,
+                                          onTap: () => ref.read(sidebarCollapsedProvider.notifier).set(true),
+                                        ),
+                                      ],
+                                    ),
                             ),
                           ),
                           Padding(
-                            padding: EdgeInsets.symmetric(horizontal: rail ? 10 : 12),
+                            padding: EdgeInsets.symmetric(horizontal: hPad),
                             child: _ProjectSwitcher(current: p, iconOnly: rail),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 8),
                           Expanded(
                             child: ListView(
-                              padding: EdgeInsets.zero,
+                              padding: const EdgeInsets.only(bottom: 8),
                               children: [
                                 for (var i = 0; i < _items.length; i++) ...[
                                   if (_sectionStarts.containsKey(i))
                                     _NavSection(_sectionStarts[i]!, collapsed: rail, first: i == 0),
                                   Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: rail ? 10 : 12, vertical: 2),
+                                    padding: EdgeInsets.symmetric(horizontal: hPad, vertical: 1),
                                     child: _SideNavTile(
                                       item: _items[i],
                                       selected: i == _index,
@@ -179,41 +201,10 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
                               ],
                             ),
                           ),
+                          Divider(height: 1, indent: hPad, endIndent: hPad),
                           Padding(
-                            padding: EdgeInsets.fromLTRB(rail ? 10 : 12, 4, rail ? 10 : 12, 2),
-                            child: _SideNavTile(
-                              item: const _NavItem(
-                                'account',
-                                'Account',
-                                Icons.account_circle_outlined,
-                                Icons.account_circle,
-                              ),
-                              selected: false,
-                              collapsed: rail,
-                              onTap: () => context.push('/account'),
-                            ),
-                          ),
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(rail ? 10 : 12, 2, rail ? 10 : 12, 12),
-                            child: _SideNavTile(
-                              item: collapsed
-                                  ? const _NavItem(
-                                      'expand',
-                                      'Expand sidebar',
-                                      Icons.keyboard_double_arrow_right,
-                                      Icons.keyboard_double_arrow_right,
-                                    )
-                                  : const _NavItem(
-                                      'collapse',
-                                      'Collapse sidebar',
-                                      Icons.keyboard_double_arrow_left,
-                                      Icons.keyboard_double_arrow_left,
-                                    ),
-                              selected: false,
-                              collapsed: rail,
-                              muted: true,
-                              onTap: () => ref.read(sidebarCollapsedProvider.notifier).set(!collapsed),
-                            ),
+                            padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 10),
+                            child: _AccountTile(collapsed: rail),
                           ),
                         ],
                       );
@@ -266,18 +257,11 @@ class _ProjectShellState extends ConsumerState<ProjectShell> {
 }
 
 class _SideNavTile extends StatefulWidget {
-  const _SideNavTile({
-    required this.item,
-    required this.selected,
-    required this.onTap,
-    this.collapsed = false,
-    this.muted = false,
-  });
+  const _SideNavTile({required this.item, required this.selected, required this.onTap, this.collapsed = false});
 
   final _NavItem item;
   final bool selected;
   final bool collapsed;
-  final bool muted;
   final VoidCallback onTap;
 
   @override
@@ -293,13 +277,13 @@ class _SideNavTileState extends State<_SideNavTile> {
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
     final selected = widget.selected;
-    final fg = selected
-        ? scheme.primary
-        : (widget.muted ? scheme.outline : (_hover ? scheme.onSurface : scheme.onSurfaceVariant));
+    final hover = _hover && !selected;
+    final fg = selected ? scheme.primary : (hover ? scheme.onSurface : scheme.onSurfaceVariant);
+    // Active: tinted fill + accent bar. Hover: a faint neutral wash only.
     final bg = selected
         ? scheme.primary.withValues(alpha: dark ? 0.16 : 0.10)
-        : (_hover ? scheme.onSurface.withValues(alpha: dark ? 0.06 : 0.045) : Colors.transparent);
-    final icon = Icon(selected ? widget.item.selectedIcon : widget.item.icon, size: 19, color: fg);
+        : (hover ? scheme.onSurface.withValues(alpha: dark ? 0.05 : 0.04) : Colors.transparent);
+    final icon = Icon(selected ? widget.item.selectedIcon : widget.item.icon, size: 18, color: fg);
 
     final tile = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -307,58 +291,59 @@ class _SideNavTileState extends State<_SideNavTile> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
+        onTap: () {
+          setState(() => _hover = false);
+          widget.onTap();
+        },
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
+          duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
-          height: 40,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: selected ? scheme.primary.withValues(alpha: dark ? 0.22 : 0.16) : Colors.transparent,
-            ),
-          ),
+          height: 36,
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
           child: Stack(
+            alignment: Alignment.centerLeft,
             children: [
-              // Accent bar on the active item.
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                left: 0,
-                top: selected ? 10 : 20,
-                bottom: selected ? 10 : 20,
-                width: 3,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: selected ? Brand.accent(theme.brightness) : null,
-                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
+              if (selected)
+                Positioned(
+                  left: 0,
+                  top: 9,
+                  bottom: 9,
+                  width: 3,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: Brand.accent(theme.brightness),
+                      borderRadius: const BorderRadius.horizontal(right: Radius.circular(3)),
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12),
-                child: widget.collapsed
-                    ? Center(child: icon)
-                    : Row(
-                        children: [
-                          icon,
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              widget.item.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.fade,
-                              softWrap: false,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontSize: 13.5,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                                color: selected ? scheme.primary : (widget.muted ? scheme.outline : scheme.onSurface),
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 12),
+                  child: widget.collapsed
+                      ? Center(child: icon)
+                      : Row(
+                          children: [
+                            icon,
+                            const SizedBox(width: 11),
+                            Expanded(
+                              child: Text(
+                                widget.item.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                softWrap: false,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontSize: 13.5,
+                                  height: 1.2,
+                                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                                  color: selected
+                                      ? scheme.primary
+                                      : (hover ? scheme.onSurface : scheme.onSurface.withValues(alpha: 0.82)),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                ),
               ),
             ],
           ),
@@ -366,6 +351,140 @@ class _SideNavTileState extends State<_SideNavTile> {
       ),
     );
     return widget.collapsed ? Tooltip(message: widget.item.label, preferBelow: false, child: tile) : tile;
+  }
+}
+
+/// Small square icon button (sidebar collapse/expand). With [child], shows
+/// the child and swaps to the icon on hover.
+class _IconToggle extends StatefulWidget {
+  const _IconToggle({required this.tooltip, required this.icon, required this.onTap, this.child});
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onTap;
+  final Widget? child;
+
+  @override
+  State<_IconToggle> createState() => _IconToggleState();
+}
+
+class _IconToggleState extends State<_IconToggle> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _hover ? scheme.onSurface.withValues(alpha: 0.06) : Colors.transparent,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: widget.child != null && !_hover
+                ? widget.child
+                : Icon(widget.icon, size: 18, color: scheme.onSurfaceVariant),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Signed-in user at the bottom of the sidebar; opens Account.
+class _AccountTile extends ConsumerStatefulWidget {
+  const _AccountTile({required this.collapsed});
+
+  final bool collapsed;
+
+  @override
+  ConsumerState<_AccountTile> createState() => _AccountTileState();
+}
+
+class _AccountTileState extends ConsumerState<_AccountTile> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final user = ref.watch(userProvider).value;
+    final email = user?.email ?? '';
+    final name = (user?.displayName?.trim().isNotEmpty ?? false) ? user!.displayName!.trim() : email.split('@').first;
+    final initial = name.isEmpty ? '?' : name.characters.first.toUpperCase();
+    final avatar = Container(
+      width: 30,
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: scheme.primary.withValues(alpha: 0.14),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        initial,
+        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: scheme.primary),
+      ),
+    );
+    final tile = MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => context.push('/account'),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          height: 46,
+          padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 0 : 8),
+          decoration: BoxDecoration(
+            color: _hover ? scheme.onSurface.withValues(alpha: 0.05) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: widget.collapsed
+              ? Center(child: avatar)
+              : Row(
+                  children: [
+                    avatar,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name.isEmpty ? 'Account' : name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13, fontWeight: FontWeight.w600),
+                          ),
+                          if (email.isNotEmpty)
+                            Text(
+                              email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11.5),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.settings_outlined, size: 16, color: scheme.outline),
+                  ],
+                ),
+        ),
+      ),
+    );
+    return widget.collapsed ? Tooltip(message: email.isEmpty ? 'Account' : email, child: tile) : tile;
   }
 }
 
@@ -382,13 +501,10 @@ class _NavSection extends StatelessWidget {
     if (collapsed) {
       return first
           ? const SizedBox(height: 4)
-          : const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-              child: Divider(),
-            );
+          : const Padding(padding: EdgeInsets.symmetric(horizontal: 18, vertical: 10), child: Divider());
     }
     return Padding(
-      padding: EdgeInsets.fromLTRB(24, first ? 4 : 16, 16, 6),
+      padding: EdgeInsets.fromLTRB(24, first ? 6 : 18, 16, 6),
       child: Text(
         label.toUpperCase(),
         style: theme.textTheme.labelSmall?.copyWith(
@@ -415,9 +531,12 @@ class _ProjectSwitcher extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final projects = ref.watch(myProjectsProvider).value ?? const <Project>[];
     final scheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<String>(
+    return AppMenuAnchor<String>(
       tooltip: 'Switch project',
-      position: PopupMenuPosition.under,
+      selected: {current.id},
+      searchHint: 'Search projects',
+      searchable: projects.length > 6,
+      minWidth: 240,
       onSelected: (v) {
         if (v == '_new') {
           createProjectFlow(context, ref);
@@ -428,66 +547,60 @@ class _ProjectSwitcher extends ConsumerWidget {
           context.go('/p/$v/overview');
         }
       },
-      itemBuilder: (_) => [
+      entries: () => [
         for (final p in projects)
-          PopupMenuItem(
-            value: p.id,
+          MenuEntry(p.id, p.name, leading: _ProjectAvatar(p.name, size: 20), section: 'Projects'),
+        const MenuEntry('_new', 'New project…', icon: Icons.add_rounded),
+        const MenuEntry('_all', 'All projects', icon: Icons.grid_view_rounded),
+      ],
+      builder: (context, open) => _switcherBody(context, scheme, open),
+    );
+  }
+
+  Widget _switcherBody(BuildContext context, ColorScheme scheme, bool open) {
+    return iconOnly
+        ? SizedBox(height: 44, child: Center(child: _ProjectAvatar(current.name, size: 36)))
+        : Container(
+            padding: EdgeInsets.fromLTRB(compact ? 4 : 8, compact ? 4 : 8, 8, compact ? 4 : 8),
+            decoration: BoxDecoration(
+              color: compact
+                  ? null
+                  : (open ? scheme.primary.withValues(alpha: 0.08) : scheme.surface.withValues(alpha: 0.30)),
+              border: compact
+                  ? null
+                  : Border.all(color: open ? scheme.primary.withValues(alpha: 0.35) : scheme.outlineVariant),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: Row(
+              mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
               children: [
-                Icon(p.id == current.id ? Icons.check : null, size: 18),
-                const SizedBox(width: 8),
-                Flexible(child: Text(p.name, overflow: TextOverflow.ellipsis)),
+                _ProjectAvatar(current.name, size: compact ? 26 : 30),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!compact)
+                        Text(
+                          'Project',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.labelSmall?.copyWith(color: scheme.outline, fontSize: 10.5),
+                        ),
+                      Text(
+                        current.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: -0.2),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.unfold_more_rounded, size: 18, color: scheme.outline),
               ],
             ),
-          ),
-        const PopupMenuDivider(),
-        const PopupMenuItem(value: '_new', child: Text('New project…')),
-        const PopupMenuItem(value: '_all', child: Text('All projects')),
-      ],
-      child: iconOnly
-          ? Tooltip(
-              message: current.name,
-              child: SizedBox(height: 44, child: Center(child: _ProjectAvatar(current.name, size: 36))),
-            )
-          : Container(
-              padding: EdgeInsets.fromLTRB(compact ? 4 : 8, compact ? 4 : 8, 8, compact ? 4 : 8),
-              decoration: BoxDecoration(
-                color: compact ? null : scheme.surface.withValues(alpha: 0.30),
-                border: compact ? null : Border.all(color: scheme.outlineVariant),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-                children: [
-                  _ProjectAvatar(current.name, size: compact ? 26 : 30),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!compact)
-                          Text(
-                            'Project',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: scheme.outline,
-                              fontSize: 10.5,
-                            ),
-                          ),
-                        Text(
-                          current.name,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: -0.2),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.unfold_more_rounded, size: 18, color: scheme.outline),
-                ],
-              ),
-            ),
-    );
+          );
   }
 }
 
@@ -508,9 +621,7 @@ class _ProjectAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: Brand.accent(Brightness.light),
         borderRadius: BorderRadius.circular(size * 0.3),
-        boxShadow: [
-          BoxShadow(color: Brand.indigo.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3)),
-        ],
+        boxShadow: [BoxShadow(color: Brand.indigo.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Text(
         initial,

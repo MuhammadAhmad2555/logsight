@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/severity.dart';
 import '../../core/theme.dart';
@@ -134,18 +135,24 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
                 _load();
               },
             ),
-            DropdownButton<String?>(
-              value: _service,
-              hint: const Text('All services'),
-              borderRadius: BorderRadius.circular(14),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('All services')),
-                for (final s in services) DropdownMenuItem(value: s.name, child: Text(s.name)),
+            AppMenuAnchor<String>(
+              tooltip: 'Service',
+              selected: {_service ?? ''},
+              searchHint: 'Search services',
+              entries: () => [
+                const MenuEntry('', 'All services', icon: Icons.layers_outlined),
+                for (final s in services) MenuEntry(s.name, s.name, mono: true, section: 'Services'),
               ],
-              onChanged: (v) {
-                _service = v;
+              onSelected: (v) {
+                _service = v.isEmpty ? null : v;
                 _load();
               },
+              builder: (context, open) => MenuPill(
+                icon: Icons.layers_outlined,
+                label: _service ?? 'All services',
+                active: _service != null,
+                open: open,
+              ),
             ),
             IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh)),
           ],

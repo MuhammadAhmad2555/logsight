@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../../core/app_menu.dart';
 
 import '../../core/severity.dart';
 import '../../data/log_query.dart';
@@ -47,9 +50,15 @@ class TimeRangeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<Object>(
+    return AppMenuAnchor<Object>(
       tooltip: 'Time range',
-      position: PopupMenuPosition.under,
+      selected: {range.isRelative ? range.preset! : 'custom'},
+      searchable: false,
+      minWidth: 210,
+      entries: () => [
+        for (final p in RelativePreset.values) MenuEntry<Object>(p, p.label, section: 'Relative'),
+        const MenuEntry<Object>('custom', 'Custom range…', icon: Icons.date_range_outlined, section: 'Absolute'),
+      ],
       onSelected: (v) {
         if (v is RelativePreset) {
           onChanged(TimeRange.relative(v));
@@ -57,13 +66,8 @@ class TimeRangeButton extends StatelessWidget {
           _custom(context);
         }
       },
-      itemBuilder: (_) => [
-        for (final p in RelativePreset.values)
-          CheckedPopupMenuItem(value: p, checked: range.preset == p, child: Text(p.label)),
-        const PopupMenuDivider(),
-        CheckedPopupMenuItem(value: 'custom', checked: !range.isRelative, child: const Text('Custom range…')),
-      ],
-      child: _OutlinedChip(icon: Icons.schedule, label: range.label),
+      builder: (context, open) =>
+          MenuPill(icon: Icons.schedule_rounded, label: range.label, open: open, active: !range.isRelative),
     );
   }
 }
@@ -81,70 +85,32 @@ class SeverityButton extends StatelessWidget {
     final label = selected.isEmpty
         ? 'All levels'
         : Severity.values.where(selected.contains).map((s) => s.label).join(', ');
-    return PopupMenuButton<Severity>(
+    return AppMenuAnchor<Severity>(
       tooltip: 'Severity',
-      position: PopupMenuPosition.under,
-      onSelected: (s) {
+      multi: true,
+      searchable: false,
+      selected: selected,
+      minWidth: 200,
+      entries: () => [
+        for (final s in Severity.values.reversed)
+          MenuEntry(
+            s,
+            s.label,
+            leading: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
+            ),
+            trailing: totals == null ? null : NumberFormat.compact().format(totals![s] ?? 0),
+          ),
+      ],
+      onToggle: (s) {
         final next = {...selected};
         next.contains(s) ? next.remove(s) : next.add(s);
         onChanged(next);
       },
-      itemBuilder: (_) => [
-        for (final s in Severity.values.reversed)
-          CheckedPopupMenuItem(
-            value: s,
-            checked: selected.contains(s),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: Text(s.label)),
-                if (totals != null)
-                  Text('${totals![s] ?? 0}', style: TextStyle(color: Theme.of(context).colorScheme.outline)),
-              ],
-            ),
-          ),
-      ],
-      child: _OutlinedChip(icon: Icons.filter_list, label: label, active: selected.isNotEmpty),
-    );
-  }
-}
-
-class _OutlinedChip extends StatelessWidget {
-  const _OutlinedChip({required this.icon, required this.label, this.active = false});
-
-  final IconData icon;
-  final String label;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: active ? scheme.secondaryContainer : null,
-        border: Border.all(color: active ? scheme.secondaryContainer : scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 240),
-            child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-          ),
-          const SizedBox(width: 2),
-          const Icon(Icons.arrow_drop_down, size: 18),
-        ],
-      ),
+      builder: (context, open) =>
+          MenuPill(icon: Icons.filter_list_rounded, label: label, open: open, active: selected.isNotEmpty),
     );
   }
 }
@@ -244,11 +210,11 @@ class _FilterDialogState extends State<_FilterDialog> {
               ],
             ),
             const SizedBox(height: 14),
-            DropdownButtonFormField<FilterOp>(
-              initialValue: _op,
-              decoration: const InputDecoration(labelText: 'Operator'),
-              items: [for (final op in FilterOp.values) DropdownMenuItem(value: op, child: Text(op.label))],
-              onChanged: (v) => setState(() => _op = v ?? FilterOp.equals),
+            AppSelectField<FilterOp>(
+              label: 'Operator',
+              value: _op,
+              entries: [for (final op in FilterOp.values) MenuEntry(op, op.label)],
+              onChanged: (v) => setState(() => _op = v),
             ),
             if (_op.needsValue) ...[
               const SizedBox(height: 14),

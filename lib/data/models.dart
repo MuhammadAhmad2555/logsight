@@ -146,12 +146,7 @@ class LogError {
     return e.isEmpty ? null : e;
   }
 
-  Map<String, dynamic> toJson() => {
-    'type': ?type,
-    'message': ?message,
-    'reason': ?reason,
-    'stack': ?stack,
-  };
+  Map<String, dynamic> toJson() => {'type': ?type, 'message': ?message, 'reason': ?reason, 'stack': ?stack};
 
   /// Everything as plain text, for copying into a bug report.
   String toText() => [
@@ -216,7 +211,8 @@ class LogEntry {
   String get pattern => _patterns[this] ??= patternOf(message);
 
   /// Groups errors into issues: service + exception type + pattern.
-  String get fingerprint => issueFingerprint(service, message, exceptionType: error?.type ?? attributes['exception.type']?.toString());
+  String get fingerprint =>
+      issueFingerprint(service, message, exceptionType: error?.type ?? attributes['exception.type']?.toString());
 
   /// Looks up a field by name: built-in fields first, then attributes
   /// (dot paths such as `device.model` are supported).

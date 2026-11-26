@@ -239,8 +239,7 @@ class _LogDetailState extends State<LogDetail> {
         title: 'Log attributes',
         empty: 'No attributes',
         rows: [
-          for (final e in attrs.entries)
-            _AttrRow(key: e.key, filterKey: e.key, value: _display(e.value), mono: true),
+          for (final e in attrs.entries) _AttrRow(key: e.key, filterKey: e.key, value: _display(e.value), mono: true),
         ],
         breakdownKey: _breakdown,
         onToggleBreakdown: (k) => setState(() => _breakdown = _breakdown == k ? null : k),
@@ -306,9 +305,7 @@ class _LogDetailState extends State<LogDetail> {
         ],
       ),
       const SizedBox(height: 6),
-      _Box(
-        child: SelectableText(json, style: monoStyle.copyWith(fontSize: 12, height: 1.5)),
-      ),
+      _Box(child: SelectableText(json, style: monoStyle.copyWith(fontSize: 12, height: 1.5))),
     ];
   }
 
@@ -613,8 +610,7 @@ class _ErrorCardState extends State<_ErrorCard> {
                       style: monoStyle.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: red),
                     ),
                   ),
-                if (e.message != null)
-                  SelectableText(e.message!, style: monoStyle.copyWith(fontSize: 13, height: 1.5)),
+                if (e.message != null) SelectableText(e.message!, style: monoStyle.copyWith(fontSize: 13, height: 1.5)),
                 if (e.reason != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -653,10 +649,7 @@ class _ErrorCardState extends State<_ErrorCard> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: theme.colorScheme.outlineVariant),
                     ),
-                    child: SelectableText(
-                      shown.join('\n'),
-                      style: monoStyle.copyWith(fontSize: 11.5, height: 1.55),
-                    ),
+                    child: SelectableText(shown.join('\n'), style: monoStyle.copyWith(fontSize: 11.5, height: 1.55)),
                   ),
                   if (lines.length > _previewLines)
                     TextButton.icon(

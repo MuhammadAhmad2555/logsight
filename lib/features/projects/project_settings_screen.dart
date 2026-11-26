@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/ui.dart';
 import '../../data/models.dart';
@@ -166,16 +167,19 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       const Text('Delete logs older than'),
-                      DropdownButton<int>(
-                        value: _retentionDays,
-                        items: const [
-                          7,
-                          14,
-                          30,
-                          60,
-                          90,
-                        ].map((d) => DropdownMenuItem(value: d, child: Text('$d days'))).toList(),
-                        onChanged: _busy ? null : (v) => setState(() => _retentionDays = v ?? 30),
+                      IgnorePointer(
+                        ignoring: _busy,
+                        child: AppMenuAnchor<int>(
+                          selected: {_retentionDays},
+                          searchable: false,
+                          minWidth: 160,
+                          entries: () => [
+                            for (final d in const [7, 14, 30, 60, 90]) MenuEntry(d, '$d days'),
+                          ],
+                          onSelected: (v) => setState(() => _retentionDays = v),
+                          builder: (context, open) =>
+                              MenuPill(icon: Icons.history_rounded, label: '$_retentionDays days', open: open),
+                        ),
                       ),
                       FilledButton.tonal(onPressed: _busy ? null : _purge, child: const Text('Delete now')),
                     ],

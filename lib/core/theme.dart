@@ -140,8 +140,8 @@ ThemeData buildTheme(Brightness brightness) {
     dialogTheme: DialogThemeData(
       backgroundColor: dark ? const Color(0xF2171932) : const Color(0xF7FFFFFF),
       surfaceTintColor: Colors.transparent,
-      elevation: 24,
-      shadowColor: Colors.black.withValues(alpha: 0.4),
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.22),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
         side: BorderSide(color: border),
@@ -337,9 +337,7 @@ ThemeData buildTheme(Brightness brightness) {
       checkmarkColor: scheme.primary,
       deleteIconColor: inkMuted,
       side: WidgetStateBorderSide.resolveWith(
-        (s) => BorderSide(
-          color: s.contains(WidgetState.selected) ? scheme.primary.withValues(alpha: 0.45) : border,
-        ),
+        (s) => BorderSide(color: s.contains(WidgetState.selected) ? scheme.primary.withValues(alpha: 0.45) : border),
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       labelStyle: text.labelMedium?.copyWith(fontSize: 13, color: ink),
@@ -358,9 +356,7 @@ ThemeData buildTheme(Brightness brightness) {
       thumbColor: WidgetStateProperty.resolveWith(
         (s) => s.contains(WidgetState.selected) ? Colors.white : scheme.outline,
       ),
-      trackColor: WidgetStateProperty.resolveWith(
-        (s) => s.contains(WidgetState.selected) ? scheme.primary : fieldFill,
-      ),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? scheme.primary : fieldFill),
     ),
     checkboxTheme: CheckboxThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/severity.dart';
 import '../../core/theme.dart';
@@ -46,7 +48,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   List<VolumeBucket>? _volume;
   Map<Severity, int>? _totals;
   Object? _volumeError;
-  bool _showChart = true;
+
+  /// null = automatic: shown unless the window is short.
+  bool? _chartPref;
   _View _view = _View.logs;
   String _groupKey = 'service.name';
 
@@ -396,35 +400,58 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   @override
   Widget build(BuildContext context) {
     final wide = isWide(context);
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _toolbar(wide),
-        _ServiceBar(
-          projectId: widget.projectId,
-          selected: _q.services.length == 1 ? _q.services.first : null,
-          discovered: _knownServices,
-          onSelect: (name) =>
-              _setQuery(_q.copyWith(services: name == null ? const [] : [name], excludedServices: const [])),
-        ),
-        _activeFilters(),
-        if (_showChart) _chartCard(wide),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: GlassPanel(
-              radius: 20,
-              child: switch (_view) {
-                // Compact rows when the table itself is narrow (small window,
-                // detail panel open), while the page keeps its desktop layout.
-                _View.logs => LayoutBuilder(builder: (context, c) => _results(wide && c.maxWidth >= 620)),
-                _View.patterns => _patterns(),
-                _View.groups => _groups(),
-              },
-            ),
+    final content = LayoutBuilder(
+      builder: (context, c) {
+        // Short windows hide the chart automatically (the ⋯ menu can bring it
+        // back) so the table keeps most of the height.
+        final showChart = _chartPref ?? c.maxHeight >= 760;
+        _chartVisible = showChart;
+        final header = <Widget>[
+          _toolbar(wide),
+          _ServiceBar(
+            projectId: widget.projectId,
+            selected: _q.services.length == 1 ? _q.services.first : null,
+            discovered: _knownServices,
+            onSelect: (name) =>
+                _setQuery(_q.copyWith(services: name == null ? const [] : [name], excludedServices: const [])),
           ),
-        ),
-      ],
+          _activeFilters(),
+          if (showChart) _chartCard(wide),
+        ];
+        final table = Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: GlassPanel(
+            radius: 20,
+            child: switch (_view) {
+              // Compact rows when the table itself is narrow (small window,
+              // detail panel open), while the page keeps its desktop layout.
+              _View.logs => LayoutBuilder(builder: (context, c) => _results(wide && c.maxWidth >= 620)),
+              _View.patterns => _patterns(),
+              _View.groups => _groups(),
+            },
+          ),
+        );
+        // Very short windows: the page scrolls and the table keeps a usable
+        // height, so events are always reachable.
+        if (c.maxHeight < 600) {
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ...header,
+                SizedBox(height: math.max(380.0, c.maxHeight - 24), child: table),
+              ],
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ...header,
+            Expanded(child: table),
+          ],
+        );
+      },
     );
     if (!wide || _selected == null) return content;
     return Row(
@@ -455,20 +482,20 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 
   Widget _toolbar(bool wide) {
     final search = SizedBox(
-      height: 38,
+      height: 36,
       child: TextField(
         controller: _search,
         textInputAction: TextInputAction.search,
         onSubmitted: (v) => _setQuery(_q.copyWith(search: v)),
         decoration: InputDecoration(
           hintText: 'Search messages (whole words)…',
-          prefixIcon: const Icon(Icons.search, size: 20),
+          prefixIcon: const Icon(Icons.search_rounded, size: 19),
           contentPadding: const EdgeInsets.symmetric(vertical: 8),
           suffixIcon: _q.search.isEmpty
               ? null
               : IconButton(
                   tooltip: 'Clear search',
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: const Icon(Icons.close_rounded, size: 17),
                   onPressed: () {
                     _search.clear();
                     _setQuery(_q.copyWith(search: ''));
@@ -489,83 +516,205 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         label: Text(_liveOn ? 'Live' : (_q.range.isRelative ? 'Paused' : 'Live')),
         selected: _liveOn,
         showCheckmark: false,
+        visualDensity: const VisualDensity(vertical: -1),
         onSelected: (_) => _toggleLive(),
       ),
     );
-    final controls = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    final filters = <Widget>[
+      TimeRangeButton(
+        range: _q.range,
+        onChanged: (r) => _setQuery(_q.copyWith(range: r)),
+      ),
+      SeverityButton(
+        selected: _q.severities,
+        totals: _totals,
+        onChanged: (s) => _setQuery(_q.copyWith(severities: s)),
+      ),
+      OutlinedButton.icon(
+        onPressed: _openAddFilter,
+        icon: const Icon(Icons.add_rounded, size: 17),
+        label: const Text('Filter'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      liveButton,
+    ];
+    final actions = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        TimeRangeButton(
-          range: _q.range,
-          onChanged: (r) => _setQuery(_q.copyWith(range: r)),
-        ),
-        SeverityButton(
-          selected: _q.severities,
-          totals: _totals,
-          onChanged: (s) => _setQuery(_q.copyWith(severities: s)),
-        ),
-        OutlinedButton.icon(
-          onPressed: _openAddFilter,
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Filter'),
-          style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
-        ),
-        liveButton,
-        IconButton(
-          tooltip: _showChart ? 'Hide chart' : 'Show chart',
-          icon: Icon(_showChart ? Icons.bar_chart : Icons.bar_chart_outlined),
-          onPressed: () => setState(() => _showChart = !_showChart),
-        ),
-        SegmentedButton<_View>(
-          showSelectedIcon: false,
-          style: const ButtonStyle(visualDensity: VisualDensity.compact),
-          segments: const [
-            ButtonSegment(value: _View.logs, label: Text('Logs'), icon: Icon(Icons.list, size: 16)),
-            ButtonSegment(
-              value: _View.patterns,
-              label: Text('Patterns'),
-              icon: Icon(Icons.auto_awesome_motion_outlined, size: 16),
-            ),
-            ButtonSegment(value: _View.groups, label: Text('Group by'), icon: Icon(Icons.workspaces_outline, size: 16)),
-          ],
-          selected: {_view},
-          onSelectionChanged: (v) => setState(() => _view = v.first),
-        ),
-        _SavedViewsButton(
-          projectId: widget.projectId,
-          currentQuery: Uri(queryParameters: _q.toQueryParameters()).query,
-          onOpen: (query) => context.go('/p/${widget.projectId}/logs?$query'),
-        ),
-        PopupMenuButton<bool>(
-          tooltip: 'Export',
-          icon: const Icon(Icons.save_alt),
-          onSelected: (csv) => _exportText(csv: csv),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: false, child: Text('Save as .txt')),
-            PopupMenuItem(value: true, child: Text('Save as .csv')),
-          ],
-        ),
-        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _reload),
+        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh_rounded), onPressed: _reload),
+        _moreMenu(),
       ],
     );
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: wide
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        // One line when there's room; otherwise search + actions on top and
+        // the filters on a single scrollable line below.
+        if (c.maxWidth >= 860) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 8),
+            child: Row(
               children: [
                 Expanded(child: search),
-                const SizedBox(width: 12),
-                Flexible(child: controls),
+                const SizedBox(width: 10),
+                for (final f in filters) ...[f, const SizedBox(width: 8)],
+                actions,
               ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [search, const SizedBox(height: 8), controls],
             ),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: search),
+                  const SizedBox(width: 4),
+                  actions,
+                ],
+              ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final f in filters) ...[f, const SizedBox(width: 8)],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  /// Logs / Patterns / Group by switch.
+  Widget _viewSwitch(bool compact) => SegmentedButton<_View>(
+    showSelectedIcon: false,
+    style: const ButtonStyle(visualDensity: VisualDensity(horizontal: -2, vertical: -3)),
+    segments: [
+      ButtonSegment(
+        value: _View.logs,
+        tooltip: compact ? 'Logs' : null,
+        label: compact ? null : const Text('Logs'),
+        icon: const Icon(Icons.view_list_rounded, size: 16),
+      ),
+      ButtonSegment(
+        value: _View.patterns,
+        tooltip: compact ? 'Patterns' : null,
+        label: compact ? null : const Text('Patterns'),
+        icon: const Icon(Icons.auto_awesome_motion_outlined, size: 16),
+      ),
+      ButtonSegment(
+        value: _View.groups,
+        tooltip: compact ? 'Group by' : null,
+        label: compact ? null : const Text('Group by'),
+        icon: const Icon(Icons.workspaces_outline, size: 16),
+      ),
+    ],
+    selected: {_view},
+    onSelectionChanged: (v) => setState(() => _view = v.first),
+  );
+
+  /// "⋯" menu: chart, saved views, export.
+  Widget _moreMenu() {
+    final currentQuery = Uri(queryParameters: _q.toQueryParameters()).query;
+    return AppMenuAnchor<Object>(
+      tooltip: 'More',
+      searchable: false,
+      showChecks: false,
+      minWidth: 250,
+      maxHeight: 460,
+      entries: () {
+        final views = ref.read(savedViewsProvider(widget.projectId)).value ?? const <SavedView>[];
+        final uid = ref.read(userProvider).value?.uid;
+        final isAdmin = ref.read(myRoleProvider(widget.projectId))?.canManageKeys ?? false;
+        final chartOn = _chartVisible ?? true;
+        return [
+          MenuEntry<Object>(
+            '_chart',
+            chartOn ? 'Hide chart' : 'Show chart',
+            icon: chartOn ? Icons.bar_chart_rounded : Icons.bar_chart_outlined,
+            section: 'View',
+          ),
+          const MenuEntry<Object>(
+            '_save',
+            'Save current view…',
+            icon: Icons.bookmark_add_outlined,
+            section: 'Saved views',
+          ),
+          for (final v in views)
+            MenuEntry<Object>(
+              v,
+              v.name,
+              icon: v.query == currentQuery ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+              section: 'Saved views',
+              action: v.createdBy == uid || isAdmin
+                  ? MenuRowAction(Icons.close_rounded, 'Delete view', () {
+                      Navigator.of(context).pop();
+                      ref.read(insightsRepositoryProvider).deleteView(widget.projectId, v.id).catchError((Object e) {
+                        if (mounted) showMessage(context, friendlyError(e), error: true);
+                      });
+                    })
+                  : null,
+            ),
+          const MenuEntry<Object>('_txt', 'Export as .txt', icon: Icons.description_outlined, section: 'Export'),
+          const MenuEntry<Object>('_csv', 'Export as .csv', icon: Icons.table_chart_outlined, section: 'Export'),
+        ];
+      },
+      onSelected: (v) {
+        switch (v) {
+          case '_chart':
+            setState(() => _chartPref = !(_chartVisible ?? true));
+          case '_save':
+            _saveCurrentView(currentQuery);
+          case '_txt':
+            _exportText();
+          case '_csv':
+            _exportText(csv: true);
+          case final SavedView view:
+            context.go('/p/${widget.projectId}/logs?${view.query}');
+        }
+      },
+      builder: (context, open) => Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: open ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12) : null,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(Icons.more_horiz_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    );
+  }
+
+  /// Chart visibility from the last layout (null before the first one).
+  bool? _chartVisible;
+
+  Future<void> _saveCurrentView(String currentQuery) async {
+    final name = await promptText(
+      context,
+      title: 'Save view',
+      label: 'Name (e.g. keyo_ios errors)',
+      action: 'Save',
+      validator: (v) => v.length > 60 ? 'Keep it under 60 characters' : null,
+    );
+    final user = ref.read(userProvider).value;
+    if (name == null || user == null) return;
+    try {
+      await ref.read(insightsRepositoryProvider).saveView(widget.projectId, user, name, currentQuery);
+      if (mounted) showMessage(context, 'View “$name” saved');
+    } catch (e) {
+      if (mounted) showMessage(context, friendlyError(e), error: true);
+    }
   }
 
   Widget _activeFilters() {
@@ -586,17 +735,28 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
           onDeleted: () => _setQuery(_q.copyWith(filters: _q.filters.where((x) => x != f).toList())),
         ),
     ];
-    if (chips.isEmpty && !_q.hasFilters) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          ...chips,
-          if (_q.hasFilters) TextButton(onPressed: () => _setQuery(_q.cleared()), child: const Text('Clear all')),
-        ],
+      child: LayoutBuilder(
+        builder: (context, c) => Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _viewSwitch(c.maxWidth < 560),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  ...chips,
+                  if (_q.hasFilters)
+                    TextButton(onPressed: () => _setQuery(_q.cleared()), child: const Text('Clear all')),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -827,25 +987,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 
   /// Group-by keys offered in the picker: built-in fields, then attributes seen.
-  List<String> get _groupKeys => [
-    'service.name',
-    'severity',
-    'userId',
-    'sessionId',
-    'pattern',
-    ...(_knownKeys.toList()..sort()),
-  ];
+  static const _builtinGroupKeys = ['service.name', 'severity', 'userId', 'sessionId', 'pattern'];
 
-  Future<void> _pickGroupKey() async {
-    final key = await promptText(
-      context,
-      title: 'Group by attribute',
-      label: 'Attribute name (e.g. app.version, device.model)',
-      initial: _groupKey,
-      action: 'Group',
-    );
-    if (key != null && key.isNotEmpty) setState(() => _groupKey = key);
-  }
+  List<String> get _groupKeys => [..._builtinGroupKeys, ...(_knownKeys.toList()..sort())];
 
   /// Logs grouped by the values of one field or attribute.
   Widget _groups() {
@@ -864,32 +1008,23 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text('Group by', style: theme.textTheme.titleSmall),
-          PopupMenuButton<String>(
+          AppMenuAnchor<String>(
             tooltip: 'Choose a field or attribute',
-            position: PopupMenuPosition.under,
-            onSelected: (k) => k == '_custom' ? _pickGroupKey() : setState(() => _groupKey = k),
-            itemBuilder: (_) => [
-              for (final k in keys) CheckedPopupMenuItem(value: k, checked: k == _groupKey, child: Text(k)),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: '_custom', child: Text('Other attribute…')),
+            selected: {_groupKey},
+            searchable: true,
+            searchHint: 'Search fields and attributes',
+            minWidth: 260,
+            maxHeight: 420,
+            onCustom: (q) => q,
+            customLabel: 'Group by',
+            entries: () => [
+              for (final k in _builtinGroupKeys) MenuEntry(k, k, mono: true, section: 'Fields'),
+              for (final k in keys.where((k) => !_builtinGroupKeys.contains(k)))
+                MenuEntry(k, k, mono: true, section: 'Attributes'),
             ],
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: BoxDecoration(
-                color: scheme.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _groupKey,
-                    style: monoStyle.copyWith(fontWeight: FontWeight.w600, color: scheme.primary),
-                  ),
-                  Icon(Icons.arrow_drop_down, color: scheme.primary),
-                ],
-              ),
-            ),
+            onSelected: (k) => setState(() => _groupKey = k),
+            builder: (context, open) =>
+                MenuPill(icon: Icons.workspaces_outline, label: _groupKey, mono: true, active: true, open: open),
           ),
           Text(
             '${groups.length} values · ${_logs.length} loaded logs',
@@ -1232,78 +1367,4 @@ class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin 
 }
 
 /// Saved filter combinations for this project (shared with the team).
-class _SavedViewsButton extends ConsumerWidget {
-  const _SavedViewsButton({required this.projectId, required this.currentQuery, required this.onOpen});
-
-  final String projectId;
-  final String currentQuery;
-  final ValueChanged<String> onOpen;
-
-  Future<void> _saveCurrent(BuildContext context, WidgetRef ref) async {
-    final name = await promptText(
-      context,
-      title: 'Save view',
-      label: 'Name (e.g. keyo_ios errors)',
-      action: 'Save',
-      validator: (v) => v.length > 60 ? 'Keep it under 60 characters' : null,
-    );
-    final user = ref.read(userProvider).value;
-    if (name == null || user == null) return;
-    try {
-      await ref.read(insightsRepositoryProvider).saveView(projectId, user, name, currentQuery);
-      if (context.mounted) showMessage(context, 'View “$name” saved');
-    } catch (e) {
-      if (context.mounted) showMessage(context, friendlyError(e), error: true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final views = ref.watch(savedViewsProvider(projectId)).value ?? const <SavedView>[];
-    final uid = ref.watch(userProvider).value?.uid;
-    final isAdmin = ref.watch(myRoleProvider(projectId))?.canManageKeys ?? false;
-    return PopupMenuButton<Object>(
-      tooltip: 'Saved views',
-      icon: const Icon(Icons.bookmarks_outlined),
-      onSelected: (v) {
-        if (v == '_save') {
-          _saveCurrent(context, ref);
-        } else if (v is SavedView) {
-          onOpen(v.query);
-        }
-      },
-      itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: '_save',
-          child: ListTile(leading: Icon(Icons.bookmark_add_outlined), title: Text('Save current view…')),
-        ),
-        if (views.isNotEmpty) const PopupMenuDivider(),
-        for (final v in views)
-          PopupMenuItem<Object>(
-            value: v,
-            child: Row(
-              children: [
-                Icon(v.query == currentQuery ? Icons.bookmark : Icons.bookmark_border, size: 18),
-                const SizedBox(width: 10),
-                Expanded(child: Text(v.name, overflow: TextOverflow.ellipsis)),
-                if (v.createdBy == uid || isAdmin)
-                  IconButton(
-                    tooltip: 'Delete view',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.close, size: 16),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      ref.read(insightsRepositoryProvider).deleteView(projectId, v.id).catchError((Object e) {
-                        if (context.mounted) showMessage(context, friendlyError(e), error: true);
-                      });
-                    },
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 enum _View { logs, patterns, groups }
