@@ -25,7 +25,7 @@ class _NavItem {
 }
 
 /// Sidebar section headings, keyed by the index of their first item.
-const _sectionStarts = {0: 'Analyze', 8: 'Release', 9: 'Configure'};
+const _sectionStarts = {0: 'Analyze', 9: 'Release', 10: 'Configure'};
 
 /// How many items fit in the phone tab bar; the rest go under "More".
 const _phoneTabs = 4;
@@ -38,6 +38,7 @@ const _items = [
     Icons.space_dashboard,
   ),
   _NavItem('activity', 'Activity', Icons.bolt_outlined, Icons.bolt),
+  _NavItem('funnels', 'Funnels & retention', Icons.filter_alt_outlined, Icons.filter_alt, short: 'Funnels'),
   _NavItem('logs', 'Logs', Icons.receipt_long_outlined, Icons.receipt_long),
   _NavItem('issues', 'Issues', Icons.bug_report_outlined, Icons.bug_report),
   _NavItem('dashboards', 'Dashboards', Icons.dashboard_customize_outlined, Icons.dashboard_customize),

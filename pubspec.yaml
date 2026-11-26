@@ -122,7 +122,7 @@ flutter:
 flutter_launcher_icons:
   image_path: "assets/branding/icon_full.png"
   android: true
-  adaptive_icon_background: "#5459E3"
+  adaptive_icon_background: "#5F4FEC"
   adaptive_icon_foreground: "assets/branding/icon_foreground.png"
   min_sdk_android: 21
   ios: true
@@ -133,8 +133,8 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: "assets/branding/icon_full.png"
-    background_color: "#5459E3"
-    theme_color: "#4C6EF5"
+    background_color: "#5F4FEC"
+    theme_color: "#5468FF"
   windows:
     generate: true
     image_path: "assets/branding/icon_full.png"

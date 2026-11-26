@@ -43,14 +43,42 @@ class ProjectRepository {
 
   Future<void> renameProject(String pid, String name) => _projects.doc(pid).update({'name': name.trim()});
 
-  /// Deletes a project and its data. Logs and keys go first, because the
-  /// security rules check project membership.
-  Future<void> deleteProject(String pid, {void Function(int deleted)? onProgress}) async {
+  /// Collections holding what apps sent and what was derived from it.
+  /// "Delete all data" empties these and keeps the project's setup.
+  static const dataCollections = [
+    'logs',
+    'events',
+    'persons',
+    'eventDefs',
+    'issues',
+    'alertEvents',
+    'issueStats',
+    'statsHourly',
+    'statsDaily',
+  ];
+
+  /// The project's setup, kept by "Delete all data" and removed with the project.
+  static const setupCollections = ['views', 'alerts', 'flags', 'dashboards', 'services', 'ingestKeys'];
+
+  /// Deletes every log, event, person, event definition, issue status and
+  /// alert history in the project. Returns how many documents were removed.
+  /// Apps that are still sending will add new data straight away.
+  Future<int> deleteProjectData(String pid, {void Function(int deleted)? onProgress}) async {
     var total = 0;
-    total += await _deleteAll(_projects.doc(pid).collection('logs').limit(400), (n) {
-      onProgress?.call(total + n);
-    });
-    await _deleteAll(_projects.doc(pid).collection('ingestKeys').limit(400), null);
+    for (final c in dataCollections) {
+      final before = total;
+      total += await _deleteAll(_projects.doc(pid).collection(c).limit(400), (n) => onProgress?.call(before + n));
+    }
+    return total;
+  }
+
+  /// Deletes a project with all its data and setup. Subcollections go first,
+  /// because the security rules check project membership on the project doc.
+  Future<void> deleteProject(String pid, {void Function(int deleted)? onProgress}) async {
+    final total = await deleteProjectData(pid, onProgress: onProgress);
+    for (final c in setupCollections) {
+      await _deleteAll(_projects.doc(pid).collection(c).limit(400), (n) => onProgress?.call(total + n));
+    }
     final invites = await _invites.where('projectId', isEqualTo: pid).get();
     for (final d in invites.docs) {
       await d.reference.delete();

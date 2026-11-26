@@ -27,14 +27,20 @@ final appTrack = AppTrackLogger(
   ingestKey: '$ingestKey',
   service: 'my_flutter_app',            // shown as service_name
   defaultAttributes: {'app.version': '1.0.0'},
+  // Optional: keep unsent logs on disk so they survive crashes and restarts,
+  // e.g. '\${(await getApplicationSupportDirectory()).path}/apptrack_queue.jsonl'
+  // queueFilePath: '/path/to/apptrack_queue.jsonl',
 );
 
 void main() {
-  // Send uncaught Flutter errors to LogSight.
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Send crashes to LogSight (type, message, stack trace).
   FlutterError.onError = (details) {
-    appTrack.error(details.exceptionAsString(),
-        attributes: {'stack': details.stack.toString()});
+    FlutterError.presentError(details);
+    appTrack.recordFlutterError(details);
   };
+  PlatformDispatcher.instance.onError = appTrack.recordUncaughtError;
 
   // Activity: product events and people (like PostHog capture/identify).
   // Save appTrack.distinctId and pass it back as distinctId: next launch.

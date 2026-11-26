@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -34,6 +36,19 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
   int _scanned = 0;
 
   static const _errorLevels = {Severity.error, Severity.fatal};
+  static const _maxErrors = 2000;
+
+  /// New errors are merged into [_live] as they arrive (see [_startLive]).
+  List<LogEntry>? _live;
+  final Set<String> _ids = {};
+  StreamSubscription<List<LogEntry>>? _tail;
+  int _gen = 0;
+
+  LogQuery get _query => LogQuery(
+    range: TimeRange.relative(_range),
+    severities: _errorLevels,
+    services: _service == null ? const [] : [_service!],
+  );
 
   @override
   void initState() {
@@ -41,25 +56,51 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _tail?.cancel();
+    super.dispose();
+  }
+
   void _load() {
+    final gen = ++_gen;
+    _tail?.cancel();
+    _tail = null;
+    _live = null;
+    _ids.clear();
+    final since = DateTime.now().subtract(const Duration(minutes: 2));
+    final q = _query;
     setState(() {
       _errors = ref
           .read(logRepositoryProvider)
-          .fetchPage(
-            widget.projectId,
-            LogQuery(
-              range: TimeRange.relative(_range),
-              severities: _errorLevels,
-              services: _service == null ? const [] : [_service!],
-            ),
-            want: 2000,
-            maxScan: 2000,
-          )
+          .fetchPage(widget.projectId, q, want: _maxErrors, maxScan: _maxErrors)
           .then((p) {
             _scanned = p.scanned;
+            if (gen == _gen && mounted) {
+              _live = p.logs;
+              _ids.addAll(p.logs.map((l) => l.id));
+              _startLive(gen, q, since);
+            }
             return p.logs;
           });
     });
+  }
+
+  /// Adds errors that arrive while the page is open, so counts, "last seen"
+  /// and new issues update without a refresh.
+  void _startLive(int gen, LogQuery q, DateTime since) {
+    _tail = ref
+        .read(logRepositoryProvider)
+        .watchArrivals(widget.projectId, q, since: since)
+        .listen((logs) {
+          if (gen != _gen || !mounted) return;
+          final (from, _) = q.range.resolve();
+          final fresh = logs.where((l) => _ids.add(l.id) && !l.timestamp.isBefore(from)).toList();
+          if (fresh.isEmpty) return;
+          setState(() {
+            _live = ([...fresh, ..._live!]..sort((a, b) => b.timestamp.compareTo(a.timestamp))).take(_maxErrors).toList();
+          });
+        }, onError: (_) {});
   }
 
   bool _visible(IssueGroup g) => switch (_status) {
@@ -168,7 +209,7 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
                 child: Center(child: CircularProgressIndicator()),
               );
             }
-            final groups = groupIssues(snap.data!, states).where(_visible).toList();
+            final groups = groupIssues(_live ?? snap.data!, states).where(_visible).toList();
             if (groups.isEmpty) {
               return GlassCard(
                 child: EmptyState(
@@ -206,7 +247,7 @@ class _IssuesScreenState extends ConsumerState<IssuesScreen> {
                 Padding(
                   padding: const EdgeInsets.all(8),
                   child: Text(
-                    'Grouped from the latest $_scanned error logs in this range.',
+                    'Grouped from the latest $_scanned error logs in this range. New errors appear as they arrive.',
                     style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
                   ),
                 ),

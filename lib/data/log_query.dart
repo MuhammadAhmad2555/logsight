@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../core/time_format.dart';
 import '../core/severity.dart';
 import '../core/tokenizer.dart';
 import 'models.dart';
@@ -28,11 +29,7 @@ class TimeRange {
     return '${_fmt(from!)} → ${_fmt(to!)}';
   }
 
-  static String _fmt(DateTime d) {
-    String two(int v) => v.toString().padLeft(2, '0');
-    final l = d.toLocal();
-    return '${l.year}-${two(l.month)}-${two(l.day)} ${two(l.hour)}:${two(l.minute)}';
-  }
+  static String _fmt(DateTime d) => timeFormatFor(clockUse24h, date: 'yyyy-MM-dd').format(d.toLocal());
 
   @override
   bool operator ==(Object other) =>

@@ -1,11 +1,14 @@
 {
   "name": "logsight-functions",
-  "description": "LogSight alerts checker (Cloud Functions for Firebase)",
+  "description": "LogSight alerts checker and log aggregator (Cloud Functions for Firebase)",
   "private": true,
   "main": "index.js",
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:emulator": "firebase emulators:exec --only firestore --project demo-logsight 'node --test test/emulator/aggregator.emulator.js'"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0",

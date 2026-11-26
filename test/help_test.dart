@@ -36,7 +36,7 @@ void main() {
 
   test('every page in the app has a help topic', () {
     const pages = [
-      'overview', 'activity', 'logs-page', 'issues', 'dashboards', 'endpoints', 'people',
+      'overview', 'activity', 'funnels', 'logs-page', 'issues', 'dashboards', 'endpoints', 'people',
       'alerts', 'flags', 'data', 'keys', 'members', 'settings',
     ];
     for (final p in pages) {

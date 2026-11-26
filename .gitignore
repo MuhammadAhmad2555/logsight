@@ -53,3 +53,7 @@ firestore-debug.log
 functions/node_modules/
 dart_defines.json
 .env
+
+# Local tool output
+.wrangler/
+packages/*/build/

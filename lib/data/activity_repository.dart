@@ -55,6 +55,7 @@ class ActivityRepository {
     DocumentSnapshot<Map<String, dynamic>>? after,
     int want = 50,
     int maxScan = 1000,
+    int pageSize = ActivityRepository.pageSize,
   }) async {
     final (from, to) = q.range.resolve();
     final base = serverQuery(pid, q, from: from, to: to);
@@ -80,15 +81,17 @@ class ActivityRepository {
     return EventPage(events: out, cursor: cursor, hasMore: hasMore, scanned: scanned);
   }
 
-  /// Live: events newer than [since], re-emitted as new ones arrive.
-  Stream<List<ActivityEvent>> watchSince(String pid, ActivityQuery q, {DateTime? since, int limit = 200}) {
-    final (from, _) = q.range.resolve();
-    return serverQuery(
-      pid,
-      q,
-      from: since ?? from,
-    ).limit(limit).snapshots().map((s) => s.docs.map(ActivityEvent.fromDoc).where(q.matches).toList());
-  }
+  /// Live: matching events that reached the server at or after [since],
+  /// re-emitted as more arrive. Follows the server's `receivedAt`, not the
+  /// device's `ts` (see [LogRepository.watchArrivals] for why).
+  Stream<List<ActivityEvent>> watchArrivals(String pid, ActivityQuery q, {required DateTime since, int limit = 200}) =>
+      _p(pid)
+          .collection('events')
+          .where('receivedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+          .orderBy('receivedAt', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((s) => s.docs.map(ActivityEvent.fromDoc).where(q.matches).toList());
 
   Future<List<VolumeBucket>> volume(String pid, ActivityQuery q, {int maxBuckets = 40}) {
     final (from, to) = q.range.resolve();

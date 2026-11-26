@@ -112,7 +112,11 @@ ThemeData buildTheme(Brightness brightness, {bool? mobileOverride}) {
     textTheme: text,
     primaryTextTheme: base.primaryTextTheme.apply(fontFamily: _font),
     visualDensity: VisualDensity.standard,
-    splashFactory: InkSparkle.splashFactory,
+    // InkSparkle compiles a shader on first use (a visible stutter, worst on
+    // the web); it's Android's look, the lighter ripple is used elsewhere.
+    splashFactory: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+        ? InkSparkle.splashFactory
+        : InkRipple.splashFactory,
     hoverColor: scheme.onSurface.withValues(alpha: 0.04),
     highlightColor: Colors.transparent,
     iconTheme: IconThemeData(color: inkMuted, size: 20),

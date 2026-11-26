@@ -1,12 +1,17 @@
-// LogSight alerts checker. Runs every 5 minutes, evaluates every enabled
+// LogSight Cloud Functions (need the Firebase Blaze plan):
+//  - checkAlerts: see below.
+//  - aggregateLogs: keeps issue and endpoint totals (aggregator.js).
+//
+// Alerts checker. Runs every 5 minutes, evaluates every enabled
 // alert rule (projects/{pid}/alerts/{id}), and when a rule starts or stops
 // firing it records an event (projects/{pid}/alertEvents) and calls the
-// rule's webhook. Needs the Firebase Blaze plan.
+// rule's webhook.
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const logger = require('firebase-functions/logger');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { isFiring, countSpec, webhookBody, safeWebhookUrl } = require('./alerts');
+const { runAggregation, pruneStats } = require('./aggregator');
 
 initializeApp();
 
@@ -83,6 +88,30 @@ exports.checkAlerts = onSchedule(
         await doc.ref.update(update);
       } catch (e) {
         logger.error('Alert check failed', { pid, alert: rule.id, error: String(e) });
+      }
+    }
+  },
+);
+
+// Log aggregator: keeps issueStats, statsHourly and statsDaily up to date
+// (see aggregator.js). Every minute; the first runs backfill existing logs.
+exports.aggregateLogs = onSchedule(
+  { schedule: 'every 1 minutes', timeoutSeconds: 60, memory: '512MiB', retryCount: 0, maxInstances: 1 },
+  async () => {
+    const db = getFirestore();
+    const started = Date.now();
+    let total = 0;
+    try {
+      total = await runAggregation(db);
+    } catch (e) {
+      if (String(e.message) !== 'cursor-moved') logger.error('Aggregation failed', { error: String(e) });
+    }
+    if (total) logger.info('Aggregated logs', { total, ms: Date.now() - started });
+    if (new Date().getUTCMinutes() === 7) {
+      try {
+        await pruneStats(db);
+      } catch (e) {
+        logger.warn('Pruning stats failed', { error: String(e) });
       }
     }
   },

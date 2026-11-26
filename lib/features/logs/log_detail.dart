@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/time_format.dart';
 import '../../core/patterns.dart';
 import '../../core/severity.dart';
 import '../../core/theme.dart';
@@ -49,7 +50,6 @@ class LogDetail extends StatefulWidget {
 enum _Tab { details, raw, related }
 
 class _LogDetailState extends State<LogDetail> {
-  static final _fmt = DateFormat('yyyy-MM-dd HH:mm:ss.SSS');
   _Tab _tab = _Tab.details;
 
   /// Attribute whose value breakdown is open.
@@ -112,7 +112,7 @@ class _LogDetailState extends State<LogDetail> {
               label: 'Timestamp',
               child: Tooltip(
                 message: '${log.timestamp.toUtc().toIso8601String()} UTC',
-                child: Text(_fmt.format(log.timestamp), style: monoStyle.copyWith(fontSize: 12.5)),
+                child: Text(timeFormat(context, date: 'yyyy-MM-dd', millis: true).format(log.timestamp), style: monoStyle.copyWith(fontSize: 12.5)),
               ),
             ),
             _Meta(
@@ -999,7 +999,7 @@ class _RelatedList extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final fmt = DateFormat('MMM d, HH:mm:ss');
+    final fmt = timeFormat(context, date: 'MMM d,', seconds: true);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),

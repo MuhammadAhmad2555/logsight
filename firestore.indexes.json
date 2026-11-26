@@ -245,6 +245,54 @@
       "collectionGroup": "events",
       "fieldPath": "properties",
       "indexes": []
+    },
+    {
+      "collectionGroup": "statsHourly",
+      "fieldPath": "issues",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "statsHourly",
+      "fieldPath": "endpoints",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "statsDaily",
+      "fieldPath": "issues",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "statsDaily",
+      "fieldPath": "endpoints",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "issueStats",
+      "fieldPath": "latest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "issueStats",
+      "fieldPath": "users",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "logs",
+      "fieldPath": "receivedAt",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
     }
   ]
 }

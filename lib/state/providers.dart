@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/time_format.dart';
 import '../data/activity.dart';
 import '../data/activity_repository.dart';
 import '../data/auth_repository.dart';
@@ -84,6 +85,24 @@ class ThemeModeController extends Notifier<ThemeMode> {
 }
 
 final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
+
+/// 12- or 24-hour times (Account → Appearance), remembered on this device.
+class ClockFormatController extends Notifier<ClockFormat> {
+  static const _key = 'clock_format';
+
+  @override
+  ClockFormat build() {
+    final saved = ref.watch(sharedPreferencesProvider).getString(_key);
+    return ClockFormat.values.firstWhere((f) => f.name == saved, orElse: () => ClockFormat.system);
+  }
+
+  void set(ClockFormat format) {
+    state = format;
+    ref.read(sharedPreferencesProvider).setString(_key, format.name);
+  }
+}
+
+final clockFormatProvider = NotifierProvider<ClockFormatController, ClockFormat>(ClockFormatController.new);
 
 class LastProjectController extends Notifier<String?> {
   static const _key = 'last_project';

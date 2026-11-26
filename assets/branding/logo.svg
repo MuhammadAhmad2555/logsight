@@ -1,10 +1,15 @@
-<svg xmlns='http://www.w3.org/2000/svg' width='1024' height='1024' viewBox='0 0 1024 1024'><defs>
-  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4C6EF5"/><stop offset="1" stop-color="#5F3DC4"/></linearGradient>
-  <linearGradient id="iris" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#364FC7"/><stop offset="1" stop-color="#2B1A6E"/></linearGradient>
-</defs><rect width='1024' height='1024' rx='230' fill='url(#bg)'/><g>
-  <path d="M152 512 C 262 330, 386 252, 512 252 C 638 252, 762 330, 872 512 C 762 694, 638 772, 512 772 C 386 772, 262 694, 152 512 Z" fill="#FFFFFF"/>
-  <circle cx="512" cy="512" r="178" fill="url(#iris)"/>
-  <rect x="408" y="436" width="208" height="36" rx="18" fill="#FFFFFF"/>
-  <rect x="408" y="494" width="150" height="36" rx="18" fill="#FFFFFF" opacity="0.92"/>
-  <rect x="408" y="552" width="182" height="36" rx="18" fill="#7CF2C8"/>
-</g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5468FF"/><stop offset="1" stop-color="#6A35D9"/></linearGradient>
+  <radialGradient id="glow" cx="0.22" cy="0.12" r="0.9"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/><stop offset="0.6" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
+  <linearGradient id="iris" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B4BDB"/><stop offset="1" stop-color="#24145F"/></linearGradient>
+</defs>
+<rect width="1024" height="1024" rx="230" fill="url(#bg)"/><rect width="1024" height="1024" rx="230" fill="url(#glow)"/>
+<g>
+  <path d="M112 512 C 236 345, 370 282, 512 282 C 654 282, 788 345, 912 512 C 788 679, 654 742, 512 742 C 370 742, 236 679, 112 512 Z" fill="#FFFFFF"/>
+  <circle cx="512" cy="512" r="196" fill="url(#iris)"/>
+  <circle cx="618" cy="392" r="24" fill="#FFFFFF" opacity="0.9"/>
+  <rect x="400" y="424" width="226" height="48" rx="24" fill="#FFFFFF"/>
+  <rect x="400" y="490" width="160" height="48" rx="24" fill="#FFFFFF" opacity="0.85"/>
+  <rect x="400" y="556" width="196" height="48" rx="24" fill="#6EF0C3"/>
+</g>
+</svg>

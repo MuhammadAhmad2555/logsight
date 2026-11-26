@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/time_format.dart';
 import '../../core/glass.dart';
 import '../../core/ui.dart';
 import '../../data/auth_repository.dart';
@@ -40,6 +41,25 @@ class AccountScreen extends ConsumerWidget {
                 ],
                 selected: {mode},
                 onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).set(s.first),
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<ClockFormat>(
+                segments: [
+                  for (final f in ClockFormat.values)
+                    ButtonSegment(
+                      value: f,
+                      label: Text(f.label),
+                      icon: Icon(f == ClockFormat.system ? Icons.schedule_rounded : Icons.access_time_rounded),
+                    ),
+                ],
+                selected: {ref.watch(clockFormatProvider)},
+                onSelectionChanged: (s) => ref.read(clockFormatProvider.notifier).set(s.first),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'How times are shown, e.g. ${timeFormatFor(false).format(DateTime(2026, 1, 1, 14, 30))} or '
+                '${timeFormatFor(true).format(DateTime(2026, 1, 1, 14, 30))}. System follows this device.',
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 24),
               Text('Security', style: theme.textTheme.titleSmall),

@@ -167,17 +167,20 @@ class LogRepository {
     return LogPage(logs: out, cursor: cursor, hasMore: hasMore, scanned: scanned);
   }
 
-  /// Live tail: the newest matching logs, updating as they arrive.
-  /// Live updates: the newest matching logs from [since] (default: the start
-  /// of the query's time range), re-emitted whenever new logs arrive.
-  Stream<List<LogEntry>> watchLatest(String pid, LogQuery q, {DateTime? since, int limit = 200}) {
-    final (from, _) = q.range.resolve();
-    return serverQuery(
-      pid,
-      q,
-      from: since ?? from,
-    ).limit(limit).snapshots().map((s) => s.docs.map(LogEntry.fromDoc).where(q.matches).toList());
-  }
+  /// Live updates: matching logs that reached the server at or after [since],
+  /// re-emitted whenever more arrive.
+  ///
+  /// This follows `receivedAt` (set by the server on every write), not the
+  /// device's `ts`: SDKs send logs in batches and retry when offline, and
+  /// device clocks drift, so a new log's `ts` is often older than logs already
+  /// shown. Only the single-field `receivedAt` index is needed; the rest of
+  /// [q] is applied here.
+  Stream<List<LogEntry>> watchArrivals(String pid, LogQuery q, {required DateTime since, int limit = 200}) => _logs(pid)
+      .where('receivedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+      .orderBy('receivedAt', descending: true)
+      .limit(limit)
+      .snapshots()
+      .map((s) => s.docs.map(LogEntry.fromDoc).where(q.matches).toList());
 
   /// Log counts over time for the volume chart (see [countVolume]).
   Future<List<VolumeBucket>> volume(String pid, LogQuery q, {int maxBuckets = 40}) {

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/time_format.dart';
 import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/severity.dart';
@@ -39,7 +39,6 @@ class LogsScreen extends ConsumerStatefulWidget {
 }
 
 class _LogsScreenState extends ConsumerState<LogsScreen> {
-  final _scroll = ScrollController();
   late final TextEditingController _search = TextEditingController(
     text: widget.query.search,
   );
@@ -73,6 +72,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   bool get _liveOn => _q.range.isRelative && !_paused;
 
   LogEntry? _selected;
+
+  /// Event codes whose merged group is expanded in the results list.
+  final Set<String> _expandedCodes = {};
   final Set<String> _knownServices = {};
   final Set<String> _knownKeys = {};
   final Map<String, Set<String>> _knownValues = {};
@@ -86,21 +88,27 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 
   /// Every field seen in this project's logs, kept across visits.
   KnownFields? _fieldsStore;
-  KnownFields get _fields => _fieldsStore ??= KnownFields(ref.read(sharedPreferencesProvider), 'logs_${widget.projectId}');
+  KnownFields get _fields => _fieldsStore ??= KnownFields(
+    ref.read(sharedPreferencesProvider),
+    'logs_${widget.projectId}',
+  );
 
   void _seedKnown() {
-    _knownKeys.addAll(_fields.sortedKeys().where((k) => !logBuiltInFields.contains(k)));
+    _knownKeys.addAll(
+      _fields.sortedKeys().where((k) => !logBuiltInFields.contains(k)),
+    );
     for (final e in _fields.sortedValues().entries) {
       _knownValues.putIfAbsent(e.key, () => <String>{}).addAll(e.value);
     }
-    _knownValues.putIfAbsent('severity', () => <String>{}).addAll(Severity.values.map((s) => s.id));
+    _knownValues
+        .putIfAbsent('severity', () => <String>{})
+        .addAll(Severity.values.map((s) => s.id));
   }
 
   @override
   void initState() {
     super.initState();
     _seedKnown();
-    _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _reload());
   }
 
@@ -124,7 +132,6 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   @override
   void dispose() {
     _stopTail();
-    _scroll.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -237,6 +244,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   Future<void> _reload() async {
     final gen = ++_generation;
     _stopTail();
+    // Live updates pick up from here, so nothing that arrives while the first
+    // page loads is missed (duplicates are dropped by id). The margin covers
+    // this device's clock running ahead of the server's.
+    final tailFrom = DateTime.now().subtract(_liveOverlap);
     setState(() {
       _loading = true;
       _error = null;
@@ -260,7 +271,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         _scanned = page.scanned;
         _loading = false;
       });
-      if (_liveOn) _startTail(gen);
+      if (_liveOn) _startTail(gen, tailFrom);
     } catch (e) {
       if (gen != _generation || !mounted) return;
       setState(() {
@@ -320,28 +331,41 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     }
   }
 
-  void _onScroll() {
-    if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400)
+  /// Loads the next page when the list is scrolled near its end.
+  bool _onListScroll(ScrollNotification n) {
+    if (n.depth == 0 &&
+        n.metrics.axis == Axis.vertical &&
+        n.metrics.extentAfter < 400)
       _loadMore();
+    return false;
   }
 
-  /// Listens for logs newer than the newest one shown and adds them on top.
-  void _startTail(int gen) {
+  static const _liveOverlap = Duration(minutes: 2);
+
+  /// Listens for logs that reach the server from [since] on and merges them
+  /// into the list in time order.
+  void _startTail(int gen, DateTime since) {
     _stopTail();
-    final since = _logs.isEmpty ? null : _logs.first.timestamp;
     _tailSub = _repo
-        .watchLatest(widget.projectId, _q, since: since)
+        .watchArrivals(widget.projectId, _q, since: since)
         .listen(
           (logs) {
             if (gen != _generation || !mounted) return;
-            final fresh = logs.where((l) => !_ids.contains(l.id)).toList()
-              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            final (from, _) = _q.range.resolve();
+            final fresh = logs
+                .where(
+                  (l) => !_ids.contains(l.id) && !l.timestamp.isBefore(from),
+                )
+                .toList();
             setState(() => _lastLiveUpdate = DateTime.now());
             if (fresh.isEmpty) return;
             _remember(fresh);
             _save(fresh);
             setState(() {
-              _logs = [...fresh, ..._logs];
+              // Late or batched logs can be older than ones already shown,
+              // so keep the list sorted rather than just prepending.
+              _logs = [...fresh, ..._logs]
+                ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
               _ids.addAll(fresh.map((l) => l.id));
               _error = null;
             });
@@ -527,28 +551,15 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             },
           ),
         );
-        // Very short windows: the page scrolls and the table keeps a usable
-        // height, so events are always reachable.
-        if (layoutHeight < 600) {
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ...header,
-                SizedBox(
-                  height: math.max(380.0, c.maxHeight - 24),
-                  child: table,
-                ),
-              ],
-            ),
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ...header,
-            Expanded(child: table),
+        // One scroll for the whole page: scrolling first moves the toolbar,
+        // filters and chart out of view, then the table (which fills the
+        // window) scrolls its logs. In a small window the logs get the full
+        // height instead of a strip under the header.
+        return NestedScrollView(
+          headerSliverBuilder: (context, _) => [
+            for (final w in header) SliverToBoxAdapter(child: w),
           ],
+          body: table,
         );
       },
     );
@@ -608,7 +619,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     );
     final updated = _lastLiveUpdate == null
         ? ''
-        : ' · checked ${DateFormat.Hms().format(_lastLiveUpdate!)}';
+        : ' · checked ${timeFormat(context, seconds: true).format(_lastLiveUpdate!)}';
     final liveButton = Tooltip(
       message: !_q.range.isRelative
           ? 'Switch to the last hour and show new logs as they arrive'
@@ -861,7 +872,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             final path = '/p/${widget.projectId}/logs?${view.query}';
             ref
                 .read(quickAccessProvider(widget.projectId).notifier)
-                .visit(QuickLink(path: path, title: view.name, kind: 'Saved view'));
+                .visit(
+                  QuickLink(path: path, title: view.name, kind: 'Saved view'),
+                );
             context.go(path);
         }
       },
@@ -889,7 +902,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   /// A default tile title describing the current filters, e.g. "ERROR · keyo_ios".
   String _tileTitle() {
     final parts = <String>[
-      if (_q.severities.isNotEmpty) Severity.values.where(_q.severities.contains).map((s) => s.label).join(' + '),
+      if (_q.severities.isNotEmpty)
+        Severity.values
+            .where(_q.severities.contains)
+            .map((s) => s.label)
+            .join(' + '),
       if (_q.services.isNotEmpty) _q.services.join(', '),
       if (_q.search.trim().isNotEmpty) '“${_q.search.trim()}”',
       for (final f in _q.filters.take(2)) f.label,
@@ -1087,27 +1104,38 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       );
     }
     final scheme = Theme.of(context).colorScheme;
+    final rows = _mergedRows();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (wide)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.fromLTRB(19, 7, 16, 7),
             decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
             ),
             child: DefaultTextStyle.merge(
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
+                letterSpacing: 0.6,
                 fontWeight: FontWeight.w600,
                 color: scheme.onSurfaceVariant,
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  SizedBox(width: 170, child: Text('TIMESTAMP')),
-                  SizedBox(width: 82, child: Text('LEVEL')),
-                  SizedBox(width: 150, child: Text('SERVICE.NAME')),
-                  Expanded(child: Text('MESSAGE')),
+                  SizedBox(
+                    width: LogRow.timeWidth(context),
+                    child: const Text('TIME'),
+                  ),
+                  const SizedBox(
+                    width: LogRow.levelWidth,
+                    child: Text('LEVEL'),
+                  ),
+                  const SizedBox(
+                    width: LogRow.serviceWidth,
+                    child: Text('SERVICE'),
+                  ),
+                  const Expanded(child: Text('MESSAGE')),
                 ],
               ),
             ),
@@ -1117,25 +1145,89 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
         Expanded(
           child: RefreshIndicator(
             onRefresh: _reload,
-            child: ListView.builder(
-              controller: _scroll,
-              physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: _logs.length + 1,
-              itemBuilder: (context, i) {
-                if (i == _logs.length) return _footer();
-                final log = _logs[i];
-                return _LogRow(
-                  log: log,
-                  wide: wide,
-                  selected: _selected?.id == log.id,
-                  onTap: () => _select(log),
-                );
-              },
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onListScroll,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: rows.length + 1,
+                itemBuilder: (context, i) {
+                  if (i == rows.length) return _footer();
+                  final r = rows[i];
+                  if (r.day != null) return LogDayDivider(r.day!);
+                  final log = r.log!;
+                  return LogRow(
+                    log: log,
+                    wide: wide,
+                    selected: _selected?.id == log.id,
+                    onTap: () => _select(log),
+                    groupCount: r.groupCount,
+                    groupSpan: r.span,
+                    expanded:
+                        r.groupCount > 1 && _expandedCodes.contains(r.code),
+                    onToggle: r.groupCount > 1
+                        ? () => setState(() {
+                            if (!_expandedCodes.remove(r.code))
+                              _expandedCodes.add(r.code!);
+                          })
+                        : null,
+                    nested: r.nested,
+                  );
+                },
+              ),
             ),
           ),
         ),
       ],
     );
+  }
+
+  /// Logs that share an `event_code` collapse into one row, placed where the
+  /// newest of them is. Expanding it lists every log of that code below.
+  List<_ResultRow> _mergedRows() {
+    final byCode = <String, List<LogEntry>>{};
+    for (final log in _logs) {
+      final code = _eventCodeOf(log);
+      if (code != null) byCode.putIfAbsent(code, () => []).add(log);
+    }
+    final rows = <_ResultRow>[];
+    final emitted = <String>{};
+    DateTime? day;
+    // A divider whenever the (local) day changes between top-level rows.
+    void dayOf(LogEntry log) {
+      final t = log.timestamp.toLocal();
+      final d = DateTime(t.year, t.month, t.day);
+      if (d != day) rows.add(_ResultRow.day(day = d));
+    }
+
+    for (final log in _logs) {
+      final code = _eventCodeOf(log);
+      final group = code == null ? null : byCode[code]!;
+      if (group == null || group.length < 2) {
+        dayOf(log);
+        rows.add(_ResultRow(log));
+        continue;
+      }
+      if (!emitted.add(code!)) continue;
+      dayOf(log);
+      final times = group.map((l) => l.timestamp);
+      final span = times
+          .reduce((a, b) => a.isAfter(b) ? a : b)
+          .difference(times.reduce((a, b) => a.isBefore(b) ? a : b));
+      rows.add(
+        _ResultRow(log, code: code, groupCount: group.length, span: span),
+      );
+      if (_expandedCodes.contains(code)) {
+        rows.addAll(group.map((l) => _ResultRow(l, code: code, nested: true)));
+      }
+    }
+    return rows;
+  }
+
+  static String? _eventCodeOf(LogEntry log) {
+    final v = log.field('event_code');
+    if (v == null) return null;
+    final s = '$v'.trim();
+    return s.isEmpty ? null : s;
   }
 
   /// Logs grouped into message patterns (from the logs loaded so far).
@@ -1446,61 +1538,210 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
   }
 }
 
-class _LogRow extends StatelessWidget {
-  const _LogRow({
+class _ResultRow {
+  const _ResultRow(
+    LogEntry this.log, {
+    this.code,
+    this.groupCount = 1,
+    this.span,
+    this.nested = false,
+  }) : day = null;
+
+  /// A divider above the first log of a new day.
+  const _ResultRow.day(DateTime this.day)
+    : log = null,
+      code = null,
+      groupCount = 1,
+      span = null,
+      nested = false;
+
+  final LogEntry? log;
+  final DateTime? day;
+  final String? code;
+
+  /// Time between the oldest and newest log of a merged group.
+  final Duration? span;
+
+  /// > 1 for the header row of merged logs sharing an event_code.
+  final int groupCount;
+
+  /// A log listed under an expanded group.
+  final bool nested;
+}
+
+/// One row of the log list (public for the screenshot test).
+///
+/// Quiet by default: time, a small level dot, the service as a coloured
+/// chip and the message. Only warn/error/fatal rows get a coloured edge and a
+/// faint tint, so problems stand out. Logs merged by `event_code` show
+/// "×N · span" next to the message.
+class LogRow extends StatelessWidget {
+  const LogRow({
     required this.log,
     required this.wide,
     required this.selected,
     required this.onTap,
+    this.groupCount = 1,
+    this.groupSpan,
+    this.expanded = false,
+    this.onToggle,
+    this.nested = false,
   });
 
   final LogEntry log;
   final bool wide;
   final bool selected;
   final VoidCallback onTap;
+  final int groupCount;
+  final Duration? groupSpan;
+  final bool expanded;
+  final VoidCallback? onToggle;
+  final bool nested;
 
-  static final _wideFmt = DateFormat('MMM dd HH:mm:ss.SSS');
-  static final _narrowFmt = DateFormat('MMM dd HH:mm:ss');
+  static const levelWidth = 72.0;
+  static const serviceWidth = 150.0;
+  static double timeWidth(BuildContext context) => use24h(context) ? 104 : 126;
+
+  bool get _loud => log.severity.index >= Severity.warn.index;
+
+  static String _span(Duration d) {
+    if (d.inMilliseconds < 1000) return '${d.inMilliseconds}ms';
+    if (d.inSeconds < 60) return '${d.inSeconds}s';
+    if (d.inMinutes < 60) return '${d.inMinutes}m';
+    if (d.inHours < 48) return '${d.inHours}h';
+    return '${d.inDays}d';
+  }
+
+  Widget _level(ThemeData theme) {
+    final c = log.severity.color;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          log.severity.label,
+          style: TextStyle(
+            fontSize: 10.5,
+            letterSpacing: 0.5,
+            fontWeight: FontWeight.w700,
+            color: _loud ? c : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _groupChip(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    final label = groupSpan == null || groupSpan == Duration.zero
+        ? '×$groupCount'
+        : '×$groupCount · ${_span(groupSpan!)}';
+    return Tooltip(
+      message: expanded
+          ? 'Collapse'
+          : 'Show all $groupCount logs with this event_code',
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
+          decoration: BoxDecoration(
+            color: scheme.primary.withValues(alpha: expanded ? 0.18 : 0.1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.primary,
+                ),
+              ),
+              AnimatedRotation(
+                turns: expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 160),
+                child: Icon(
+                  Icons.expand_more_rounded,
+                  size: 16,
+                  color: scheme.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _message(ThemeData theme, {int maxLines = 1}) {
+    final text = Text(
+      log.message,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: monoStyle.copyWith(
+        fontSize: 12.5,
+        color: _loud ? log.severity.color : theme.colorScheme.onSurface,
+        fontWeight: log.severity.index >= Severity.error.index
+            ? FontWeight.w600
+            : null,
+      ),
+    );
+    if (groupCount <= 1) return text;
+    return Row(
+      crossAxisAlignment: maxLines == 1
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        Flexible(child: text),
+        const SizedBox(width: 8),
+        _groupChip(theme),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final time = Tooltip(
+      message: timeFormat(
+        context,
+        date: 'EEE, MMM d, yyyy',
+        millis: true,
+      ).format(log.timestamp),
+      waitDuration: const Duration(milliseconds: 600),
+      child: Text(
+        timeFormat(context, millis: wide, seconds: !wide).format(log.timestamp),
+        style: monoStyle.copyWith(fontSize: 12, color: scheme.onSurfaceVariant),
+      ),
+    );
     final row = wide
         ? Row(
             children: [
+              SizedBox(width: timeWidth(context), child: time),
               SizedBox(
-                width: 170,
-                child: Text(
-                  _wideFmt.format(log.timestamp),
-                  style: monoStyle.copyWith(fontSize: 12),
-                ),
-              ),
-              SizedBox(
-                width: 82,
+                width: levelWidth,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: SeverityBadge(log.severity),
+                  child: _level(theme),
                 ),
               ),
               SizedBox(
-                width: 150,
-                child: Text(
-                  log.service,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                width: serviceWidth,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ServiceChip(log.service),
                 ),
               ),
-              Expanded(
-                child: Text(
-                  log.message,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: monoStyle.copyWith(fontSize: 12.5),
-                ),
-              ),
+              Expanded(child: _message(theme)),
             ],
           )
         : Column(
@@ -1508,55 +1749,90 @@ class _LogRow extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  SeverityBadge(log.severity, compact: true),
-                  const SizedBox(width: 8),
-                  Text(
-                    _narrowFmt.format(log.timestamp),
-                    style: monoStyle.copyWith(fontSize: 11.5),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      log.service,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
+                  _level(theme),
+                  const SizedBox(width: 10),
+                  time,
+                  const Spacer(),
+                  Flexible(child: ServiceChip(log.service)),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                log.message,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: monoStyle.copyWith(fontSize: 12.5),
-              ),
+              const SizedBox(height: 5),
+              _message(theme, maxLines: 2),
             ],
           );
+    // Logs inside an expanded group keep the columns aligned and are marked
+    // by a faint accent edge instead of an indent.
+    final edge = _loud
+        ? log.severity.color
+        : nested
+        ? scheme.primary.withValues(alpha: 0.35)
+        : Colors.transparent;
     return Material(
       color: selected
-          ? scheme.secondaryContainer.withValues(alpha: 0.6)
+          ? scheme.primary.withValues(alpha: 0.12)
+          : _loud
+          ? log.severity.color.withValues(
+              alpha: log.severity.index >= Severity.error.index ? 0.07 : 0.04,
+            )
+          : nested
+          ? scheme.onSurface.withValues(alpha: 0.025)
           : Colors.transparent,
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: wide ? 7 : 10,
-          ),
+          padding: EdgeInsets.fromLTRB(16, wide ? 6 : 9, 16, wide ? 6 : 9),
           decoration: BoxDecoration(
             border: Border(
-              left: BorderSide(color: log.severity.color, width: 3),
+              left: BorderSide(
+                color: selected ? scheme.primary : edge,
+                width: 3,
+              ),
               bottom: BorderSide(
-                color: scheme.outlineVariant.withValues(alpha: 0.6),
+                color: scheme.outlineVariant.withValues(alpha: 0.35),
               ),
             ),
           ),
           child: row,
+        ),
+      ),
+    );
+  }
+}
+
+/// "Today", "Yesterday" or "Wed, Nov 26" above the first log of each day.
+class LogDayDivider extends StatelessWidget {
+  const LogDayDivider(this.day);
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final label = day == today
+        ? 'Today'
+        : day == today.subtract(const Duration(days: 1))
+        ? 'Yesterday'
+        : DateFormat(
+            day.year == now.year ? 'EEE, MMM d' : 'EEE, MMM d, yyyy',
+          ).format(day);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(19, 10, 16, 4),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: scheme.outlineVariant.withValues(alpha: 0.35),
+          ),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+          color: scheme.onSurfaceVariant,
         ),
       ),
     );

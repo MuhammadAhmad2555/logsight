@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import 'src/file_sink.dart';
 import 'src/flags.dart';
+import 'src/queue_store.dart';
 
 export 'src/flags.dart' show FeatureFlag, FlagCondition, rolloutBucket;
 
@@ -28,13 +29,18 @@ class AppTrackLogger {
     this.maxQueue = 5000,
     this.printToConsole = false,
     this.logFilePath,
+    this.queueFilePath,
+    this.retention = const Duration(days: 90),
+    this.apiBase = 'https://firestore.googleapis.com',
     String? distinctId,
     this.maxLogFileBytes = 5 * 1024 * 1024,
     http.Client? client,
   })  : assert(batchSize > 0 && batchSize <= 500),
         _client = client ?? http.Client(),
-        _fileSink = logFilePath == null ? null : LogFileSink(logFilePath, maxBytes: maxLogFileBytes) {
+        _fileSink = logFilePath == null ? null : LogFileSink(logFilePath, maxBytes: maxLogFileBytes),
+        _store = queueFilePath == null ? null : QueueStore(queueFilePath) {
     _distinctId = distinctId ?? _anonId();
+    _restoreQueue();
     _timer = Timer.periodic(flushInterval, (_) => flush());
   }
 
@@ -61,6 +67,18 @@ class AppTrackLogger {
   /// new one is started, so at most two files are kept.
   final int maxLogFileBytes;
 
+  /// If set, logs and events waiting to be sent are also kept in this file,
+  /// so they survive the app being killed, crashing or going offline and are
+  /// sent on the next launch, e.g. `<app support folder>/apptrack_queue.jsonl`.
+  /// Use one file per logger. Ignored on the web (the queue stays in memory).
+  final String? queueFilePath;
+
+  /// How long LogSight keeps each log: sent as `expireAt` (log time +
+  /// retention), which Firestore's TTL policy uses to delete it
+  /// automatically once the project turns TTL on. 1–400 days; null sends no
+  /// expiry. Events are not affected.
+  final Duration? retention;
+
   /// Set these to attach the current user or session to every log.
   String? userId;
   String? sessionId;
@@ -77,9 +95,28 @@ class AppTrackLogger {
   final List<Map<String, Object?>> _meta = [];
   final Map<String, Set<String>> _knownEvents = {};
 
+  /// Where the Firestore REST API is. Only change it for tests (e.g. the
+  /// Firestore emulator at `http://localhost:8080`).
+  final String apiBase;
+
+  /// [retention] clamped to what the server accepts (1–400 days).
+  late final Duration? _retention = retention == null
+      ? null
+      : Duration(
+          microseconds: retention!.inMicroseconds.clamp(
+            const Duration(days: 1).inMicroseconds,
+            const Duration(days: 400).inMicroseconds,
+          ),
+        );
+
   final http.Client _client;
   final LogFileSink? _fileSink;
+  final QueueStore? _store;
+
+  /// Logs and events waiting to be sent, oldest first. Each has a sequence
+  /// number in `_n` (also used by the queue file).
   final List<Map<String, Object?>> _queue = [];
+  int _seq = 0;
   final Random _random = Random.secure();
   late final Timer _timer;
   Future<void>? _inFlight;
@@ -91,13 +128,21 @@ class AppTrackLogger {
   /// Logs dropped because the queue was full or the server rejected them.
   int dropped = 0;
 
+  /// Logs and events restored from [queueFilePath] at startup (left unsent
+  /// by an earlier run).
+  int restored = 0;
+
+  /// Sends the server had already stored (a retry after a lost response, a
+  /// re-send after a restart, or a repeated custom `id`). They are skipped,
+  /// so nothing is stored twice.
+  int duplicates = 0;
+
   /// Logs queued but not yet delivered (waiting for a batch or a retry).
   /// After `await close()`, `pending == 0 && dropped == 0` means every log
   /// was accepted by the server.
   int get pending => _queue.length + _meta.length;
 
-  Uri get _endpoint => Uri.parse(
-      'https://firestore.googleapis.com/v1/projects/$firebaseProjectId/databases/(default)/documents:commit');
+  Uri get _endpoint => Uri.parse('$apiBase/v1/projects/$firebaseProjectId/databases/(default)/documents:commit');
 
   String get _docBase =>
       'projects/$firebaseProjectId/databases/(default)/documents/projects/$projectId/logs/';
@@ -163,7 +208,11 @@ class AppTrackLogger {
   /// Records a product event (PostHog's `capture`), e.g.
   /// `capture('purchase_completed', properties: {'plan': 'pro', 'amount': 9.99})`.
   /// At most 128 properties per event.
-  void capture(String event, {Map<String, Object?>? properties, DateTime? timestamp}) {
+  ///
+  /// [id] makes the event idempotent: events with the same ID are stored
+  /// once, e.g. `capture('purchase_completed', id: transactionId)`. Without
+  /// it each call gets its own ID (retries never create copies either way).
+  void capture(String event, {Map<String, Object?>? properties, DateTime? timestamp, String? id}) {
     if (_closed) return;
     final name = event.trim();
     if (name.isEmpty) return;
@@ -172,19 +221,17 @@ class AppTrackLogger {
       final keep = props.keys.take(128).toSet();
       props.removeWhere((k, _) => !keep.contains(k));
     }
-    _queue.add({
+    _enqueue({
       '_kind': 'event',
       'event': name.length > 200 ? name.substring(0, 200) : name,
-      'distinctId': _distinctId,
+      'distinctId': _cut(_distinctId, 200),
       'ts': (timestamp ?? DateTime.now()).toUtc(),
       'key': ingestKey,
       'service': service,
-      if (sessionId != null) 'sessionId': sessionId,
+      if (sessionId != null) 'sessionId': _cut(sessionId!, 128),
       if (props.isNotEmpty) 'properties': props,
-    });
+    }, id: id);
     _registerEvent(name, props.keys);
-    _trimQueue();
-    if (_queue.length >= batchSize) flush();
   }
 
   /// A screen view, like PostHog's `$screen` event.
@@ -240,7 +287,7 @@ class AppTrackLogger {
     try {
       do {
         final uri = Uri.parse(
-          'https://firestore.googleapis.com/v1/$_root/flags',
+          '$apiBase/v1/$_root/flags',
         ).replace(queryParameters: {'pageSize': '300', 'pageToken': ?pageToken});
         final res = await _client.get(uri).timeout(const Duration(seconds: 15));
         if (res.statusCode != 200) return false;
@@ -340,12 +387,46 @@ class AppTrackLogger {
     });
   }
 
-  void _trimQueue() {
+  /// Queues an item. Its Firestore document ID is fixed here (custom [id] if
+  /// valid, else random), so every retry and every re-send after a restart
+  /// writes the same document and can't create a copy.
+  void _enqueue(Map<String, Object?> item, {String? id}) {
+    final custom = id?.trim();
+    item['_id'] = custom != null && _docIdOk(custom) ? custom : _id();
+    item['_n'] = ++_seq;
+    _queue.add(item);
+    _store?.added(item);
     if (_queue.length > maxQueue) {
       final extra = _queue.length - maxQueue;
+      final last = _queue[extra - 1]['_n'] as int;
       _queue.removeRange(0, extra);
       dropped += extra;
+      _store?.removedUpTo(last, _queue);
     }
+    if (_queue.length >= batchSize) flush();
+  }
+
+  /// Removes everything up to sequence number [seq] (sent or rejected).
+  void _removeUpTo(int seq) {
+    _queue.removeWhere((e) => (e['_n'] as int) <= seq);
+    _store?.removedUpTo(seq, _queue);
+  }
+
+  void _restoreQueue() {
+    final items = _store?.load() ?? const [];
+    if (items.isEmpty) return;
+    // Keep the newest if more were saved than the queue holds.
+    final keep = items.length > maxQueue ? items.sublist(items.length - maxQueue) : items;
+    dropped += items.length - keep.length;
+    // Items saved by SDK versions before document IDs were fixed at creation.
+    for (final item in keep) {
+      item['_id'] ??= _id();
+    }
+    _queue.addAll(keep);
+    _seq = keep.last['_n'] as int;
+    restored = keep.length;
+    // Send them soon, not after the first flush interval.
+    Timer.run(flush);
   }
 
   // ==================================================================== LOGS
@@ -360,6 +441,7 @@ class AppTrackLogger {
     Object? error,
     StackTrace? stackTrace,
     String? reason,
+    String? id,
   }) => _log(
     level,
     message,
@@ -369,6 +451,7 @@ class AppTrackLogger {
     error: error,
     stackTrace: stackTrace,
     reason: reason,
+    id: id,
   );
 
   /// Logs one API request for the Endpoints page: calls, error rate and
@@ -439,6 +522,7 @@ class AppTrackLogger {
     StackTrace? stackTrace,
     String? reason,
     List<String> extraTokens = const [],
+    String? id,
   }) {
     if (_closed || level.index < minLevel.index) return;
     // Error details are only kept on error and fatal logs.
@@ -465,7 +549,7 @@ class AppTrackLogger {
       traceId: traceId,
       error: details,
     ));
-    _queue.add({
+    _enqueue({
       'ts': ts,
       'severity': level.name,
       'message': text,
@@ -475,13 +559,14 @@ class AppTrackLogger {
           ? tokenize(text)
           : {...extraTokens, ...tokenize(text, maxTokens: 64 - extraTokens.length)}.toList(),
       if (attrs.isNotEmpty) 'attributes': attrs,
-      if (userId != null) 'userId': userId,
-      if (sessionId != null) 'sessionId': sessionId,
-      'traceId': ?traceId,
+      // Cut to the server's limits: one over-long value would get the whole
+      // batch rejected.
+      if (userId != null) 'userId': _cut(userId!, 128),
+      if (sessionId != null) 'sessionId': _cut(sessionId!, 128),
+      if (traceId != null) 'traceId': _cut(traceId, 128),
       'error': ?details,
-    });
-    _trimQueue();
-    if (_queue.length >= batchSize) flush();
+      if (_retention != null) 'expireAt': ts.add(_retention),
+    }, id: id);
   }
 
   /// Sends everything queued. Safe to call often; concurrent calls share one send.
@@ -498,20 +583,31 @@ class AppTrackLogger {
     while (_queue.isNotEmpty) {
       final batch = _queue.take(batchSize).toList();
       final status = await _send(batch);
-      if (status == _SendResult.ok || status == _SendResult.rejected) {
-        _queue.removeRange(0, batch.length);
-        if (status == _SendResult.rejected) dropped += batch.length;
-        _failures = 0;
-        if (status == _SendResult.ok) {
-          // Keep "last seen" current for everyone who just sent events.
-          final people = {for (final e in batch) if (e['_kind'] == 'event') e['distinctId'] as String};
-          for (final id in people) {
-            _person(id, const {});
-          }
-        }
-      } else {
+      if (status == _SendResult.retry) {
         _backoff();
         return;
+      }
+      _failures = 0;
+      if (status == _SendResult.ok) {
+        _delivered(batch);
+      } else if (batch.length == 1) {
+        _resolved(batch.single, status);
+      } else {
+        // A commit is all-or-nothing: one item already stored (409) or one bad
+        // item (400/403) fails the whole batch. Send them one at a time so
+        // only those are skipped and the rest are stored.
+        for (final item in batch) {
+          final one = await _send([item]);
+          if (one == _SendResult.retry) {
+            _backoff();
+            return;
+          }
+          if (one == _SendResult.ok) {
+            _delivered([item]);
+          } else {
+            _resolved(item, one);
+          }
+        }
       }
     }
     while (_meta.isNotEmpty) {
@@ -522,6 +618,27 @@ class AppTrackLogger {
         return;
       }
       _meta.removeRange(0, batch.length);
+    }
+  }
+
+  /// Removes items the server stored and keeps "last seen" current for
+  /// everyone who just sent events. By sequence number: while a batch is in
+  /// flight, newer items may be added and older ones dropped (queue full).
+  void _delivered(List<Map<String, Object?>> items) {
+    _removeUpTo(items.last['_n'] as int);
+    final people = {for (final e in items) if (e['_kind'] == 'event') e['distinctId'] as String};
+    for (final id in people) {
+      _person(id, const {});
+    }
+  }
+
+  /// One item the server didn't store: already there, or rejected.
+  void _resolved(Map<String, Object?> item, _SendResult status) {
+    _removeUpTo(item['_n'] as int);
+    if (status == _SendResult.exists) {
+      duplicates++;
+    } else {
+      dropped++;
     }
   }
 
@@ -572,8 +689,8 @@ class AppTrackLogger {
         for (final item in batch)
           {
             'update': {
-              'name': item['_kind'] == 'event' ? '$_root/events/${_id()}' : '$_docBase${_id()}',
-              'fields': _fields(Map.of(item)..remove('_kind')),
+              'name': item['_kind'] == 'event' ? '$_root/events/${item['_id']}' : '$_docBase${item['_id']}',
+              'fields': _fields(Map.of(item)..remove('_kind')..remove('_n')..remove('_id')),
             },
             'currentDocument': {'exists': false},
             'updateTransforms': [
@@ -590,6 +707,9 @@ class AppTrackLogger {
         if (registerService) _serviceRegistered = true;
         return _SendResult.ok;
       }
+      // 409 ALREADY_EXISTS: a document with this ID is already stored (sent
+      // before). Other 409s (ABORTED: contention) are retried.
+      if (res.statusCode == 409) return res.body.contains('ALREADY_EXISTS') ? _SendResult.exists : _SendResult.retry;
       // 400/403: bad data or a disabled key. Retrying won't help.
       if (res.statusCode == 400 || res.statusCode == 403) {
         // ignore: avoid_print
@@ -614,11 +734,120 @@ class AppTrackLogger {
     await flush();
     _closed = true;
     _fileSink?.close();
+    _store?.close();
     _client.close();
+  }
+
+  // ================================================================= CRASHES
+
+  /// Uncaught errors sent per error (type + first line) per minute; repeats
+  /// beyond this (e.g. an error thrown on every frame) are skipped.
+  static const crashRepeatLimit = 5;
+  final Map<String, (DateTime, int)> _recentCrashes = {};
+
+  /// Records a Flutter framework error (build, layout, paint…). Set it as
+  /// Flutter's handler at startup:
+  ///
+  /// ```dart
+  /// FlutterError.onError = (details) {
+  ///   FlutterError.presentError(details); // keep the console output
+  ///   appTrack.recordFlutterError(details);
+  /// };
+  /// ```
+  ///
+  /// [details] is a `FlutterErrorDetails` (typed loosely so this package
+  /// works without Flutter).
+  void recordFlutterError(Object details, {bool fatal = false}) {
+    try {
+      final d = details as dynamic;
+      final Object error = d.exception as Object;
+      final stack = d.stack as StackTrace?;
+      String? text(Object? v) {
+        final s = v?.toString().trim();
+        return s == null || s.isEmpty ? null : s;
+      }
+
+      _recordUncaught(
+        error,
+        stack,
+        mechanism: 'FlutterError.onError',
+        fatal: fatal,
+        attributes: {
+          'error.library': ?text(d.library),
+          'error.context': ?text(d.context),
+          if (d.silent == true) 'error.silent': true,
+        },
+      );
+    } catch (_) {
+      _recordUncaught(details, null, mechanism: 'FlutterError.onError', fatal: fatal);
+    }
+  }
+
+  /// Records an uncaught error. Set it as the handler for errors outside
+  /// Flutter's callbacks (async code, platform channels):
+  ///
+  /// ```dart
+  /// PlatformDispatcher.instance.onError = appTrack.recordUncaughtError;
+  /// ```
+  ///
+  /// Returns false, so Flutter still reports the error as usual.
+  bool recordUncaughtError(Object error, StackTrace stackTrace, {bool fatal = false}) {
+    _recordUncaught(error, stackTrace, mechanism: 'PlatformDispatcher.onError', fatal: fatal);
+    return false;
+  }
+
+  /// Runs [body] and records any error it doesn't catch, including in async
+  /// code it starts. For Dart apps and servers without Flutter:
+  ///
+  /// ```dart
+  /// void main() => appTrack.runGuarded(() async { ... });
+  /// ```
+  ///
+  /// Errors caught here are logged as `fatal`, since nothing else handled them.
+  void runGuarded(FutureOr<void> Function() body) {
+    runZonedGuarded(
+      body,
+      (error, stack) => _recordUncaught(error, stack, mechanism: 'runGuarded', fatal: true),
+    );
+  }
+
+  void _recordUncaught(
+    Object error,
+    StackTrace? stack, {
+    required String mechanism,
+    bool fatal = false,
+    Map<String, Object?> attributes = const {},
+  }) {
+    if (_closed) return;
+    try {
+      final text = error.toString().trim();
+      final firstLine = text.split('\n').first.trim();
+      final message = firstLine.isEmpty ? '${error.runtimeType}' : firstLine;
+      final key = '${error.runtimeType}|$message';
+      final now = DateTime.now();
+      final seen = _recentCrashes[key];
+      final count = seen != null && now.difference(seen.$1) < const Duration(minutes: 1) ? seen.$2 + 1 : 1;
+      _recentCrashes[key] = (count == 1 ? now : seen!.$1, count);
+      if (_recentCrashes.length > 200) _recentCrashes.remove(_recentCrashes.keys.first);
+      if (count > crashRepeatLimit) return;
+
+      _log(
+        fatal ? LogLevel.fatal : LogLevel.error,
+        message.length > 500 ? message.substring(0, 500) : message,
+        error: error,
+        stackTrace: stack,
+        attributes: {'error.handled': false, 'error.mechanism': mechanism, ...attributes},
+      );
+      flush();
+    } catch (_) {
+      // Never let error reporting throw.
+    }
   }
 }
 
-enum _SendResult { ok, retry, rejected }
+enum _SendResult { ok, retry, rejected, exists }
+
+String _cut(String s, int max) => s.length > max ? s.substring(0, max) : s;
 
 /// Service names that are safe as a Firestore document ID.
 bool _serviceIdOk(String s) =>

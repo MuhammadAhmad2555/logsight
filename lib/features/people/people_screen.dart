@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/time_format.dart';
 import '../../core/glass.dart';
 import '../../core/severity.dart';
 import '../../core/theme.dart';
@@ -367,7 +368,7 @@ class _PersonScreenState extends ConsumerState<PersonScreen> {
                 for (final e in day.value)
                   ListTile(
                     dense: true,
-                    leading: Text(DateFormat.Hms().format(e.timestamp), style: monoStyle.copyWith(fontSize: 12)),
+                    leading: Text(timeFormat(context, seconds: true).format(e.timestamp), style: monoStyle.copyWith(fontSize: 12)),
                     title: Text(e.label, style: const TextStyle(fontWeight: FontWeight.w600)),
                     subtitle: e.properties.isEmpty
                         ? null
@@ -425,7 +426,7 @@ class _PersonScreenState extends ConsumerState<PersonScreen> {
             if (i > 0) const Divider(),
             ListTile(
               leading: const Icon(Icons.timelapse),
-              title: Text(DateFormat('MMM d, HH:mm').format(sessions[i].start)),
+              title: Text(timeFormat(context, date: 'MMM d,').format(sessions[i].start)),
               subtitle: Text(
                 '${sessions[i].events.length} events · ${dur(sessions[i].duration)}'
                 '${sessions[i].services.isEmpty ? '' : ' · ${sessions[i].services.join(', ')}'}',
@@ -469,7 +470,7 @@ class _PersonScreenState extends ConsumerState<PersonScreen> {
                   leading: SeverityBadge(l.severity, compact: true),
                   title: Text(l.message, maxLines: 1, overflow: TextOverflow.ellipsis, style: monoStyle),
                   subtitle: Text(
-                    '${DateFormat('MMM d HH:mm:ss').format(l.timestamp)} · ${l.service}',
+                    '${timeFormat(context, date: 'MMM d', seconds: true).format(l.timestamp)} · ${l.service}',
                     style: theme.textTheme.bodySmall,
                   ),
                 ),

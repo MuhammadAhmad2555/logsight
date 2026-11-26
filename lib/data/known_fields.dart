@@ -22,6 +22,13 @@ class KnownFields {
 
   String get _prefKey => 'known_fields_$_id';
 
+  /// Forgets the fields remembered for a project's logs and events.
+  static Future<void> forgetProject(SharedPreferences prefs, String projectId) async {
+    for (final kind in ['logs', 'activity']) {
+      await prefs.remove('known_fields_${kind}_$projectId');
+    }
+  }
+
   void _load() {
     if (_loaded) return;
     _loaded = true;

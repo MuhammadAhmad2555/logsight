@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,16 +23,23 @@ class _OverviewData {
     required this.errors,
     required this.perService,
     required this.volume,
-    required this.issues,
-    required this.recentErrors,
+    required this.errorLogs,
+    required this.states,
   });
 
-  final int total;
-  final int errors;
-  final Map<String, int> perService;
-  final List<VolumeBucket> volume;
-  final List<IssueGroup> issues;
-  final List<LogEntry> recentErrors;
+  /// Counts and the chart; re-counted every minute while the page is open.
+  int total;
+  int errors;
+  Map<String, int> perService;
+  List<VolumeBucket> volume;
+
+  /// Latest error logs, newest first; new ones are added as they arrive.
+  List<LogEntry> errorLogs;
+  final Map<String, IssueState> states;
+
+  List<IssueGroup> get issues =>
+      groupIssues(errorLogs, states).where((i) => i.status != IssueStatus.ignored).take(5).toList();
+  List<LogEntry> get recentErrors => errorLogs.take(8).toList();
 }
 
 /// Project dashboard: totals, error rate, logs per service, volume,
@@ -51,10 +60,85 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
 
   static const _errorLevels = {Severity.error, Severity.fatal};
 
+  /// Live updates: new error logs are merged in as they arrive; counts and
+  /// the chart are re-counted every [_recount].
+  static const _recount = Duration(minutes: 1);
+  static const _errorCap = 1000;
+  int _gen = 0;
+  StreamSubscription<List<LogEntry>>? _tail;
+  Timer? _timer;
+  final Set<String> _errorIds = {};
+
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void dispose() {
+    _stopLive();
+    super.dispose();
+  }
+
+  void _stopLive() {
+    _tail?.cancel();
+    _tail = null;
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _startLive(int gen, _OverviewData data, DateTime since) {
+    final pid = widget.projectId;
+    final errQ = LogQuery(range: TimeRange.relative(_range), severities: _errorLevels);
+    _tail = ref
+        .read(logRepositoryProvider)
+        .watchArrivals(pid, errQ, since: since)
+        .listen((logs) {
+          if (gen != _gen || !mounted) return;
+          final (from, _) = errQ.range.resolve();
+          final fresh = logs.where((l) => _errorIds.add(l.id) && !l.timestamp.isBefore(from)).toList();
+          if (fresh.isEmpty) return;
+          setState(() {
+            data.errorLogs = ([...fresh, ...data.errorLogs]..sort((a, b) => b.timestamp.compareTo(a.timestamp)))
+                .take(_errorCap)
+                .toList();
+          });
+        }, onError: (_) {});
+    _timer = Timer.periodic(_recount, (_) async {
+      try {
+        final c = await _counts(pid, _servicesLoaded);
+        if (gen != _gen || !mounted) return;
+        setState(() {
+          data.total = c.total;
+          data.errors = c.errors;
+          data.volume = c.volume;
+          data.perService = c.perService;
+        });
+      } catch (_) {
+        // Keep the last numbers; the next tick tries again.
+      }
+    });
+  }
+
+  Future<({int total, int errors, List<VolumeBucket> volume, Map<String, int> perService})> _counts(
+    String pid,
+    List<String> services,
+  ) async {
+    final repo = ref.read(logRepositoryProvider);
+    final q = LogQuery(range: TimeRange.relative(_range));
+    final r = await Future.wait([
+      repo.count(pid, q),
+      repo.count(pid, q.copyWith(severities: _errorLevels)),
+      repo.volume(pid, q, maxBuckets: 30),
+      for (final s in services) repo.count(pid, q.copyWith(services: [s])),
+    ]);
+    return (
+      total: r[0] as int,
+      errors: r[1] as int,
+      volume: r[2] as List<VolumeBucket>,
+      perService: {for (var i = 0; i < services.length; i++) services[i]: r[3 + i] as int},
+    );
   }
 
   @override
@@ -66,6 +150,11 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
   void _refresh() => setState(() => _future = _load());
 
   Future<_OverviewData> _load() async {
+    final gen = ++_gen;
+    _stopLive();
+    _errorIds.clear();
+    // Errors arriving from here on are merged in live (duplicates dropped by id).
+    final since = DateTime.now().subtract(const Duration(minutes: 2));
     final repo = ref.read(logRepositoryProvider);
     final pid = widget.projectId;
     final q = LogQuery(range: TimeRange.relative(_range));
@@ -79,22 +168,23 @@ class _OverviewScreenState extends ConsumerState<OverviewScreen> {
     _servicesLoaded = services;
 
     final results = await Future.wait([
-      repo.count(pid, q),
-      repo.count(pid, errQ),
-      repo.volume(pid, q, maxBuckets: 30),
-      repo.fetchPage(pid, errQ, want: 1000, maxScan: 1000),
-      for (final s in services) repo.count(pid, q.copyWith(services: [s])),
+      _counts(pid, services),
+      repo.fetchPage(pid, errQ, want: _errorCap, maxScan: _errorCap),
+      ref.read(insightsRepositoryProvider).watchIssues(pid).first,
     ]);
-    final errorPage = results[3] as LogPage;
-    final states = await ref.read(insightsRepositoryProvider).watchIssues(pid).first;
-    return _OverviewData(
-      total: results[0] as int,
-      errors: results[1] as int,
-      volume: results[2] as List<VolumeBucket>,
-      issues: groupIssues(errorPage.logs, states).where((i) => i.status != IssueStatus.ignored).take(5).toList(),
-      recentErrors: errorPage.logs.take(8).toList(),
-      perService: {for (var i = 0; i < services.length; i++) services[i]: results[4 + i] as int},
+    final c = results[0] as ({int total, int errors, List<VolumeBucket> volume, Map<String, int> perService});
+    final errorPage = results[1] as LogPage;
+    final data = _OverviewData(
+      total: c.total,
+      errors: c.errors,
+      volume: c.volume,
+      perService: c.perService,
+      errorLogs: errorPage.logs,
+      states: results[2] as Map<String, IssueState>,
     );
+    _errorIds.addAll(errorPage.logs.map((l) => l.id));
+    if (gen == _gen && mounted) _startLive(gen, data, since);
+    return data;
   }
 
   void _openLogs({String? service, Set<Severity>? severities, AttrFilter? filter}) {

@@ -140,6 +140,35 @@ final appTopics = <HelpTopic>[
     ],
   ),
   HelpTopic(
+    id: 'funnels',
+    title: 'Funnels & retention',
+    icon: Icons.filter_alt_outlined,
+    category: HelpCategory.app,
+    summary: 'How many people get through a series of events, and how many come back.',
+    related: ['activity', 'events-sdk', 'people'],
+    blocks: const [
+      HHeading('Funnel'),
+      HBullets([
+        'Add 2–10 **steps** (event names). A person counts at a step if they did every step before it, **in order**, '
+            'all within the **conversion window** of step 1.',
+        'Each step shows how many people reached it, the share of everyone who started, how many dropped off, and the '
+            'median time from the previous step.',
+        'People are counted once, from their attempt that got furthest.',
+      ]),
+      HHeading('Retention'),
+      HBullets([
+        'People join the cohort of the day (or week, starting Monday) when they first did the **start event**.',
+        '**Day N / Week N** shows the share who did the **return event** in that later period. Periods that haven’t '
+            'finished are left empty; **Average** weighs cohorts by size.',
+      ]),
+      HTip(
+        'Both are worked out in the app from up to 5,000 events of the chosen names (one Firestore read each). '
+        'If a range has more, the newest 5,000 are used and the page says so; pick a shorter range for exact results. '
+        'Your last setup is remembered on this device.',
+      ),
+    ],
+  ),
+  HelpTopic(
     id: 'issues',
     title: 'Issues (error tracking)',
     icon: Icons.bug_report_outlined,
@@ -311,15 +340,25 @@ final appTopics = <HelpTopic>[
     title: 'Project settings',
     icon: Icons.settings_outlined,
     category: HelpCategory.app,
-    summary: 'Rename, project ID, deleting old logs, auto-save to files and deleting the project.',
+    summary: 'Rename, project ID, deleting old logs, auto-save to files, deleting all data and deleting the project.',
     blocks: const [
       HBullets([
         '**Project ID**: needed in the logger setup.',
         '**Delete old logs**: remove every log older than N days (admins).',
         '**Auto-save logs as text**: on desktop and mobile, loaded logs are also written to text files in the app folder. In the browser use Export on the Logs page.',
-        '**Delete project**: permanently deletes the project, its keys and all its logs (owner only).',
+        '**Delete all data** (owner): permanently deletes every log, event, person profile, event definition, issue '
+            'status and alert history, plus this device’s saved text logs. The project, members, ingest keys, services, '
+            'flags, dashboards, alerts and saved views stay. Apps still sending add new data at once; disable their ingest keys first to stop them.',
+        '**Delete project** (owner): permanently deletes the project with all its data, keys and settings.',
       ]),
-      HTip('Theme (light / dark / system) is under Account → Appearance.'),
+      HHeading('Automatic deletion (TTL)'),
+      HText(
+        'The SDKs give every log an `expireAt` time (by default 90 days after the log; set `retention` in the logger). '
+        'Turn on a Firestore TTL policy for collection group `logs`, field `expireAt`, in the Google Cloud console '
+        '(Firestore → Time-to-live) and old logs are deleted automatically, with nothing to run. Logs from older SDK '
+        'versions have no `expireAt` and stay until deleted here.',
+      ),
+      HTip('Theme (light / dark / system) and the clock (12- or 24-hour times) are under Account → Appearance.'),
     ],
   ),
   HelpTopic(

@@ -33,6 +33,18 @@ class TextLogStore {
     return _dir = dir;
   }
 
+  /// Deletes this project's saved text files on this device.
+  Future<void> clear() {
+    final result = _queue.then((_) async {
+      final dir = await _folder();
+      if (await dir.exists()) await dir.delete(recursive: true);
+      _dir = null;
+      _saved = null;
+    });
+    _queue = result.catchError((Object _) {});
+    return result;
+  }
+
   Future<String?> folderPath() async {
     try {
       return (await _folder()).path;

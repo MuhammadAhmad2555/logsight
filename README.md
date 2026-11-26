@@ -63,7 +63,8 @@ their own request, so a problem there never drops events or logs.
  └────────────────────────────────────────────────────────────────────────┘
 ```
 
-Works on the free **Spark** plan, with no Cloud Functions:
+Works on the free **Spark** plan, with no Cloud Functions. Features that need
+Cloud Functions (Blaze plan) are on hold; see [pending.md](pending.md).
 
 - **Ingestion.** Apps write logs straight to Firestore. The rules check the
   ingest key, the field types and sizes, the severity, and that the timestamp

@@ -17,6 +17,9 @@ class TextLogStore {
 
   Future<String?> folderPath() async => null;
 
+  /// Nothing is saved on this platform.
+  Future<void> clear() async {}
+
   Future<int> append(Iterable<LogEntry> logs) async => 0;
 
   Future<String?> export(List<LogEntry> logs, String label, {bool csv = false}) async {

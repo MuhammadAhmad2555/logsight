@@ -89,6 +89,18 @@ void main() {
         HField('printToConsole', 'bool', 'Also print each log to the debug console.', defaultValue: 'false'),
         HField('logFilePath', 'String?', 'Also append every log to this text file (one line per log). Ignored on the web.', defaultValue: 'null'),
         HField('maxLogFileBytes', 'int', 'When the file is bigger, it is renamed to `logs.1.txt` and a new one starts.', defaultValue: '5 MB'),
+        HField(
+          'retention',
+          'Duration?',
+          'How long each log is kept: sent as `expireAt` (log time + retention) for Firestore TTL automatic deletion, once the project turns TTL on. 1–400 days; null sends none.',
+          defaultValue: '90 days',
+        ),
+        HField(
+          'queueFilePath',
+          'String?',
+          'Keep logs and events waiting to be sent in this file, so they survive the app being killed, crashing or going offline and are sent on the next launch. Recommended on mobile. Ignored on the web.',
+          defaultValue: 'null',
+        ),
         HField('distinctId', 'String?', 'Restore the person ID saved from the last launch (see Product events).', defaultValue: 'random anon_…'),
         HField('client', 'http.Client?', 'Custom HTTP client (proxies, tests).', defaultValue: 'new client'),
       ]),
@@ -98,6 +110,8 @@ void main() {
         HField('distinctId', 'String (read)', 'Who events belong to. Save it and pass it back next launch.'),
         HField('pending', 'int (read)', 'Logs and events queued but not delivered yet.'),
         HField('dropped', 'int (read)', 'Logs dropped because the queue was full or the server rejected them.'),
+        HField('restored', 'int (read)', 'Logs and events loaded from `queueFilePath` at startup (left unsent by the last run).'),
+        HField('duplicates', 'int (read)', 'Sends the server had already stored (a retry after a lost reply, or a repeated custom `id`). Skipped, so nothing is stored twice.'),
       ]),
       HFields(title: 'Lifecycle', [
         HField('flush()', 'Future<void>', 'Sends everything queued now. Safe to call often.'),
@@ -111,6 +125,7 @@ void main() {
   minLevel: kReleaseMode ? LogLevel.info : LogLevel.trace,
   printToConsole: !kReleaseMode,
   logFilePath: '${docsDir.path}/logs.txt',   // optional local copy
+  queueFilePath: '${supportDir.path}/apptrack_queue.jsonl', // unsent logs survive restarts
   defaultAttributes: {
     'app.version': packageInfo.version,
     'app.build': packageInfo.buildNumber,
@@ -124,8 +139,16 @@ void main() {
 // When the app goes to the background:
 await appTrack.flush();''', title: 'A production setup'),
       HTip(
+        'No duplicates: each log and event gets its ID when created and every retry reuses it, so the server never '
+        'stores a copy. Pass `id:` to `capture()` or `log()` (e.g. a purchase transaction ID) to store an event once '
+        'however often it is sent. Flush when the app goes to the background: '
+        '`AppLifecycleListener(onHide: appTrack.flush)`.',
+      ),
+      HTip(
         'Logs are queued and sent in the background, so logging never blocks or throws. '
-        'If the network is down they are retried with back-off (up to 5 minutes between tries).',
+        'If the network is down they are retried with back-off (up to 5 minutes between tries). '
+        'With `queueFilePath` set, logs not sent yet are kept on disk and sent on the next launch, '
+        'so the error logged just before a crash still arrives.',
       ),
     ],
   ),
@@ -227,34 +250,35 @@ appTrack.info('Order created', traceId: traceId, attributes: {'order_id': 9812})
   );
 }''', title: 'A caught error'),
       HHeading('Catch every crash in Flutter'),
-      HCode(r'''void main() {
-  runZonedGuarded(() {
-    WidgetsFlutterBinding.ensureInitialized();
+      HCode(r'''Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final supportDir = await getApplicationSupportDirectory(); // path_provider
 
-    // Errors inside Flutter (build, layout, gestures).
-    FlutterError.onError = (details) {
-      FlutterError.presentError(details);
-      appTrack.fatal(
-        details.exceptionAsString(),
-        error: details.exception,
-        stackTrace: details.stack,
-        reason: details.context?.toDescription(),
-        attributes: {'library': details.library},
-      );
-    };
+  appTrack = AppTrackLogger(
+    // ...your options...
+    queueFilePath: '${supportDir.path}/apptrack_queue.jsonl',
+  );
 
-    // Errors outside Flutter (platform channels, isolates).
-    PlatformDispatcher.instance.onError = (error, stack) {
-      appTrack.fatal('Uncaught platform error', error: error, stackTrace: stack);
-      return true;
-    };
+  // Errors inside Flutter (build, layout, paint, gestures).
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details); // keep the console output
+    appTrack.recordFlutterError(details);
+  };
 
-    runApp(const MyApp());
-  }, (error, stack) {
-    // Errors in async code that nobody awaited.
-    appTrack.fatal('Uncaught async error', error: error, stackTrace: stack);
-  });
+  // Everything else: async code, platform channels, timers.
+  PlatformDispatcher.instance.onError = appTrack.recordUncaughtError;
+
+  runApp(const MyApp());
 }''', title: 'main.dart'),
+      HBullets([
+        'Each crash is logged as an `error` with its type, message and stack trace, plus `error.handled = false` and '
+            '`error.mechanism`, so you can filter unhandled errors. Pass `fatal: true` to log them as `fatal` instead.',
+        'Flutter errors also record `error.library` and `error.context` (e.g. "during layout").',
+        'The same error repeating (e.g. on every frame) is sent at most 5 times a minute.',
+        'With `queueFilePath`, a crash that kills the app is sent on the next launch.',
+        'Dart apps and servers without Flutter: `void main() => appTrack.runGuarded(() async { ... });` logs anything '
+            'uncaught as `fatal`.',
+      ]),
       HHeading('How errors become issues'),
       HText(
         'Errors are grouped by **service + error type + message pattern**. The pattern is the message with '

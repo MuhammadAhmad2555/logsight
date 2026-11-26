@@ -278,3 +278,45 @@ class SectionLabel extends StatelessWidget {
     );
   }
 }
+
+/// A service name (`service.name`) as a small chip in a colour of its own,
+/// the same on every screen, so logs from several apps are easy to tell apart.
+class ServiceChip extends StatelessWidget {
+  const ServiceChip(this.service, {super.key});
+
+  final String service;
+
+  /// A stable hue per service name, readable in light and dark themes.
+  static Color colorOf(String service, Brightness brightness) {
+    var h = 0;
+    for (final unit in service.codeUnits) {
+      h = (h * 31 + unit) & 0x7fffffff;
+    }
+    final hue = (h % 360).toDouble();
+    return HSLColor.fromAHSL(1, hue, 0.55, brightness == Brightness.dark ? 0.72 : 0.38).toColor();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = colorOf(service, Theme.of(context).brightness);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 6, height: 6, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              service,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

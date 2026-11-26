@@ -1,0 +1,86 @@
+[
+  {
+    "service": "keyo_ios",
+    "message": "Payment failed for order 42",
+    "type": null,
+    "pattern": "Payment failed for order <num>",
+    "fingerprint": "14ce11094a45d967"
+  },
+  {
+    "service": "keyo_ios",
+    "message": "Payment failed for order 7",
+    "type": "PaymentException",
+    "pattern": "Payment failed for order <num>",
+    "fingerprint": "ef863ef468f959b2"
+  },
+  {
+    "service": "api",
+    "message": "GET https://api.example.com/v1/users/123?x=1 failed after 532ms",
+    "type": "SocketException",
+    "pattern": "GET <url> failed after <num>",
+    "fingerprint": "60f7384d2dc8944b"
+  },
+  {
+    "service": "api",
+    "message": "User jane.doe+test@mail.example.com not found (id 550e8400-e29b-41d4-a716-446655440000)",
+    "type": null,
+    "pattern": "User <email> not found (id <uuid>)",
+    "fingerprint": "5e723e70bbaf40ea"
+  },
+  {
+    "service": "api",
+    "message": "Connection to 10.0.0.12:5432 refused at 2026-11-26T10:00:00.123Z",
+    "type": null,
+    "pattern": "Connection to <ip> refused at <time>",
+    "fingerprint": "b00be4f3a291c14d"
+  },
+  {
+    "service": "worker",
+    "message": "Bad pointer 0x7ffde4a1 in module deadbeefdeadbeef00",
+    "type": "StateError",
+    "pattern": "Bad pointer <hex> in module <hex>",
+    "fingerprint": "453fc36f5594673d"
+  },
+  {
+    "service": "worker",
+    "message": "Key \"abc def\" missing in 'config' for token a1b2c3d4e5 and atk_x9y8z7w6",
+    "type": null,
+    "pattern": "Key \"<str>\" missing in '<str>' for token <id> and <id>",
+    "fingerprint": "31d9807062b936e2"
+  },
+  {
+    "service": "worker",
+    "message": "Timeout -15.5s while uploading 12MB (99%)",
+    "type": null,
+    "pattern": "Timeout <num> while uploading <num> (<num>%)",
+    "fingerprint": "5291a4f4fe01150e"
+  },
+  {
+    "service": "worker",
+    "message": "First line 123\nsecond line 456",
+    "type": null,
+    "pattern": "First line <num>",
+    "fingerprint": "cd1f44693c02804f"
+  },
+  {
+    "service": "ünïcødé",
+    "message": "Ошибка 500 — 失败 🚨 retry 3",
+    "type": "FormatException",
+    "pattern": "Ошибка <num> — 失败 🚨 retry <num>",
+    "fingerprint": "965ee102bee62be8"
+  },
+  {
+    "service": "svc",
+    "message": "   lots    of   spaces   ",
+    "type": "",
+    "pattern": "lots of spaces",
+    "fingerprint": "a7dbb625a056646b"
+  },
+  {
+    "service": "svc",
+    "message": "",
+    "type": null,
+    "pattern": "",
+    "fingerprint": "484b032da259c22f"
+  }
+]

@@ -154,9 +154,27 @@ service cloud.firestore {
           && (resource.data.createdBy == request.auth.uid || isAdmin(pid));
       }
 
+      // ------------------------------------------------- aggregated totals
+      // Written only by the aggregateLogs Cloud Function (admin access):
+      // issueStats/{fingerprint} = one error issue's all-time totals;
+      // statsHourly/{YYYYMMDDHH} and statsDaily/{YYYYMMDD} = per-issue error
+      // counts and per-endpoint request stats.
+      match /issueStats/{fingerprint} {
+        allow read: if isMember(pid);
+        allow delete: if isAdmin(pid);
+      }
+      match /statsHourly/{bucket} {
+        allow read: if isMember(pid);
+        allow delete: if isAdmin(pid);
+      }
+      match /statsDaily/{bucket} {
+        allow read: if isMember(pid);
+        allow delete: if isAdmin(pid);
+      }
+
       // ------------------------------------------------------- error issues
       // Doc ID = issue fingerprint. Only the team's decisions are stored;
-      // counts come from the logs.
+      // counts come from issueStats.
       match /issues/{fingerprint} {
         function validIssue(d) {
           return d.keys().hasOnly(['status', 'resolvedAt', 'updatedAt', 'assigneeUid', 'assigneeEmail'])
@@ -203,7 +221,8 @@ service cloud.firestore {
 
       match /alertEvents/{eventId} {
         allow read: if isMember(pid);
-        allow write: if false;
+        allow create, update: if false;
+        allow delete: if isAdmin(pid); // "Delete all data" in project settings
       }
 
       // ------------------------------------------------------- feature flags
@@ -410,10 +429,22 @@ service cloud.firestore {
           );
         }
 
+        // Optional deletion time for Firestore's TTL policy on `expireAt`
+        // (logs are deleted automatically once it has passed): 1–400 days
+        // after the log's own time.
+        function validExpiry(d) {
+          return !('expireAt' in d) || (
+            d.expireAt is timestamp
+            && d.expireAt >= d.ts + duration.value(1, 'd')
+            && d.expireAt <= d.ts + duration.value(400, 'd')
+          );
+        }
+
         function validLog(d) {
           return d.keys().hasAll(['ts', 'severity', 'message', 'service', 'key', 'receivedAt'])
             && d.keys().hasOnly(['ts', 'severity', 'message', 'service', 'key', 'receivedAt',
-                                 'attributes', 'tokens', 'traceId', 'sessionId', 'userId', 'error'])
+                                 'attributes', 'tokens', 'traceId', 'sessionId', 'userId', 'error',
+                                 'expireAt'])
             && d.ts is timestamp
             && d.ts > request.time - duration.value(7, 'd')
             && d.ts < request.time + duration.value(1, 'h')
@@ -429,7 +460,8 @@ service cloud.firestore {
             && optString(d, 'traceId', 128)
             && optString(d, 'sessionId', 128)
             && optString(d, 'userId', 128)
-            && validError(d);
+            && validError(d)
+            && validExpiry(d);
         }
 
         allow read: if isMember(pid);

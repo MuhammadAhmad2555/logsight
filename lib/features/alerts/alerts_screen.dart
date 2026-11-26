@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/time_format.dart';
 import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/severity.dart';
@@ -166,7 +166,7 @@ class AlertsScreen extends ConsumerWidget {
                     ),
                     title: Text('${events[i].alertName}: ${events[i].state == 'firing' ? 'firing' : 'resolved'}'),
                     subtitle: Text(
-                      '${DateFormat('MMM d, HH:mm').format(events[i].at)} · value ${events[i].value}'
+                      '${timeFormat(context, date: 'MMM d,').format(events[i].at)} · value ${events[i].value}'
                       '${events[i].webhookStatus == null ? '' : ' · webhook ${events[i].webhookStatus}'}',
                     ),
                   ),

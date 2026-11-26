@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/app_menu.dart';
 import '../../core/glass.dart';
 import '../../core/ui.dart';
+import '../../data/known_fields.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 
@@ -21,6 +22,9 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
   int _retentionDays = 30;
   bool _busy = false;
   String? _progress;
+
+  /// Progress of "Delete all data" / "Delete project".
+  String? _dangerProgress;
 
   Future<void> _rename(Project p) async {
     final name = await promptText(
@@ -74,6 +78,45 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     }
   }
 
+  /// Empties the project's data and keeps its setup (see
+  /// ProjectRepository.dataCollections), plus this device's local copies.
+  Future<void> _deleteAllData(Project p) async {
+    final typed = await promptText(
+      context,
+      title: 'Delete all data in ${p.name}?',
+      label: 'Type the project name to confirm',
+      action: 'Delete all data',
+      validator: (v) => v == p.name ? null : 'The name doesn’t match',
+    );
+    if (typed == null) return;
+    setState(() {
+      _busy = true;
+      _dangerProgress = 'Deleting data…';
+    });
+    try {
+      final n = await ref
+          .read(projectRepositoryProvider)
+          .deleteProjectData(
+            p.id,
+            onProgress: (n) {
+              if (mounted) setState(() => _dangerProgress = 'Deleted $n items…');
+            },
+          );
+      await ref.read(textLogStoreProvider(p.id)).clear();
+      await KnownFields.forgetProject(ref.read(sharedPreferencesProvider), p.id);
+      if (mounted) showMessage(context, n == 0 ? 'There was no data to delete' : 'Deleted $n items');
+    } catch (e) {
+      if (mounted) showMessage(context, friendlyError(e), error: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _dangerProgress = null;
+        });
+      }
+    }
+  }
+
   Future<void> _deleteProject(Project p) async {
     final typed = await promptText(
       context,
@@ -85,7 +128,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
     if (typed == null) return;
     setState(() {
       _busy = true;
-      _progress = 'Deleting project…';
+      _dangerProgress = 'Deleting project…';
     });
     try {
       await ref
@@ -93,7 +136,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
           .deleteProject(
             p.id,
             onProgress: (n) {
-              if (mounted) setState(() => _progress = 'Deleted $n logs…');
+              if (mounted) setState(() => _dangerProgress = 'Deleted $n logs…');
             },
           );
       if (mounted) context.go('/projects');
@@ -102,7 +145,7 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
         showMessage(context, friendlyError(e), error: true);
         setState(() {
           _busy = false;
-          _progress = null;
+          _dangerProgress = null;
         });
       }
     }
@@ -202,14 +245,39 @@ class _ProjectSettingsScreenState extends ConsumerState<ProjectSettingsScreen> {
               borderRadius: BorderRadius.circular(10),
               side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.5)),
             ),
-            child: ListTile(
-              title: const Text('Delete project'),
-              subtitle: const Text('Permanently deletes the project, its keys and all its logs.'),
-              trailing: OutlinedButton(
-                style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
-                onPressed: _busy ? null : () => _deleteProject(project),
-                child: const Text('Delete'),
-              ),
+            child: Column(
+              children: [
+                ListTile(
+                  title: const Text('Delete all data'),
+                  subtitle: const Text(
+                    'Permanently deletes every log, event, person profile, event definition, issue status and '
+                    'alert history, plus this device’s saved text logs. The project, members, ingest keys, '
+                    'services, flags, dashboards, alerts and saved views stay. Apps that are still sending will '
+                    'add new data right away; disable their ingest keys first to stop that.',
+                  ),
+                  isThreeLine: true,
+                  trailing: OutlinedButton(
+                    style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                    onPressed: _busy ? null : () => _deleteAllData(project),
+                    child: const Text('Delete data'),
+                  ),
+                ),
+                const Divider(),
+                ListTile(
+                  title: const Text('Delete project'),
+                  subtitle: const Text('Permanently deletes the project with all its data, keys and settings.'),
+                  trailing: OutlinedButton(
+                    style: OutlinedButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                    onPressed: _busy ? null : () => _deleteProject(project),
+                    child: const Text('Delete'),
+                  ),
+                ),
+                if (_dangerProgress != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(_dangerProgress!, style: theme.textTheme.bodySmall),
+                  ),
+              ],
             ),
           ),
         ],

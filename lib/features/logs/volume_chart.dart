@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/time_format.dart';
 import '../../data/log_repository.dart';
 
 /// Bar chart of log volume over time. Tapping a bar zooms into its time window.
@@ -18,11 +19,11 @@ class VolumeChart extends StatelessWidget {
     final maxCount = buckets.fold<int>(0, (m, b) => b.count > m ? b.count : m);
     final span = buckets.last.end.difference(buckets.first.start);
     final labelFmt = span.inHours <= 24
-        ? DateFormat.Hm()
+        ? timeFormat(context)
         : span.inDays <= 7
-        ? DateFormat('EEE HH:mm')
+        ? timeFormat(context, date: 'EEE')
         : DateFormat.MMMd();
-    final tipFmt = span.inDays <= 1 ? DateFormat.Hm() : DateFormat('MMM d, HH:mm');
+    final tipFmt = span.inDays <= 1 ? timeFormat(context) : timeFormat(context, date: 'MMM d,');
     final labelEvery = (buckets.length / 6).ceil().clamp(1, 1000);
 
     return LayoutBuilder(

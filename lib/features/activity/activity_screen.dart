@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/time_format.dart';
 import '../../core/glass.dart';
 import '../../core/theme.dart';
 import '../../core/ui.dart';
@@ -102,7 +103,11 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     final fields = _fields;
     for (final e in events) {
       fields.addMap(e.properties);
-      for (final (k, v) in [('event', e.event), ('distinctId', e.distinctId), ('sessionId', e.sessionId)]) {
+      for (final (k, v) in [
+        ('event', e.event),
+        ('distinctId', e.distinctId),
+        ('sessionId', e.sessionId),
+      ]) {
         if (v == null || v.isEmpty) continue;
         fields.add(k, v);
         _knownValues.putIfAbsent(k, () => <String>{}).add(v);
@@ -136,7 +141,10 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   KnownFields get _fields {
     if (_fieldsProject != widget.projectId) {
       _fieldsProject = widget.projectId;
-      _fieldsStore = KnownFields(ref.read(sharedPreferencesProvider), 'activity_${widget.projectId}');
+      _fieldsStore = KnownFields(
+        ref.read(sharedPreferencesProvider),
+        'activity_${widget.projectId}',
+      );
     }
     return _fieldsStore!;
   }
@@ -144,6 +152,9 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
   Future<void> _reload() async {
     final gen = ++_gen;
     _stopTail();
+    // Live updates pick up from here (see the logs screen); duplicates are
+    // dropped by id, the margin covers clock skew with the server.
+    final tailFrom = DateTime.now().subtract(_liveOverlap);
     setState(() {
       _loading = true;
       _error = null;
@@ -168,7 +179,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         _scanned = page.scanned;
         _loading = false;
       });
-      if (_liveOn) _startTail(gen);
+      if (_liveOn) _startTail(gen, tailFrom);
     } catch (e) {
       if (gen != _gen || !mounted) return;
       setState(() {
@@ -221,21 +232,29 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     }
   }
 
-  void _startTail(int gen) {
+  static const _liveOverlap = Duration(minutes: 2);
+
+  /// Listens for events that reach the server from [since] on (server
+  /// arrival time, so batched or late events aren't missed).
+  void _startTail(int gen, DateTime since) {
     _stopTail();
-    final since = _events.isEmpty ? null : _events.first.timestamp;
     _tail = ref
         .read(activityRepositoryProvider)
-        .watchSince(widget.projectId, _q, since: since)
+        .watchArrivals(widget.projectId, _q, since: since)
         .listen(
           (events) {
             if (gen != _gen || !mounted) return;
-            final fresh = events.where((e) => !_ids.contains(e.id)).toList()
-              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+            final (from, _) = _q.range.resolve();
+            final fresh = events
+                .where(
+                  (e) => !_ids.contains(e.id) && !e.timestamp.isBefore(from),
+                )
+                .toList();
             if (fresh.isEmpty) return;
             _remember(fresh);
             setState(() {
-              _events = [...fresh, ..._events];
+              _events = [...fresh, ..._events]
+                ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
               _ids.addAll(fresh.map((e) => e.id));
               _total = (_total ?? 0) + fresh.length;
             });
@@ -323,12 +342,18 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               .toList() ??
           const [],
       builtInKeys: activityBuiltInFields,
-      knownKeys: ({..._knownProps, ..._fields.sortedKeys()}.where((k) => !activityBuiltInFields.contains(k)).toList()
-        ..sort()),
+      knownKeys: ({
+        ..._knownProps,
+        ..._fields.sortedKeys(),
+      }.where((k) => !activityBuiltInFields.contains(k)).toList()..sort()),
       knownValues: {
-        for (final entry in _fields.sortedValues().entries) entry.key: entry.value,
+        for (final entry in _fields.sortedValues().entries)
+          entry.key: entry.value,
         for (final entry in _knownValues.entries)
-          entry.key: ({...?_fields.sortedValues()[entry.key], ...entry.value}.toList()..sort()),
+          entry.key: ({
+            ...?_fields.sortedValues()[entry.key],
+            ...entry.value,
+          }.toList()..sort()),
       },
     );
     switch (choice) {
@@ -469,8 +494,16 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             showChecks: false,
             minWidth: 230,
             entries: () => const [
-              MenuEntry(TileViz.number, 'Add count to dashboard…', icon: Icons.numbers_rounded),
-              MenuEntry(TileViz.bars, 'Add chart to dashboard…', icon: Icons.add_chart_rounded),
+              MenuEntry(
+                TileViz.number,
+                'Add count to dashboard…',
+                icon: Icons.numbers_rounded,
+              ),
+              MenuEntry(
+                TileViz.bars,
+                'Add chart to dashboard…',
+                icon: Icons.add_chart_rounded,
+              ),
             ],
             onSelected: (viz) => addTileToDashboard(
               context,
@@ -627,7 +660,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
       ),
       child: Row(
         children: [
-          const SizedBox(width: 120, child: Text('TIME')),
+          const SizedBox(width: 136, child: Text('TIME')),
           const Expanded(flex: 3, child: Text('EVENT')),
           const Expanded(flex: 3, child: Text('PERSON')),
           if (roomy) const Expanded(flex: 2, child: Text('APP')),
@@ -681,14 +714,18 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 120,
+                            width: 136,
                             child: Tooltip(
-                              message: DateFormat(
-                                'yyyy-MM-dd HH:mm:ss.SSS',
+                              message: timeFormat(
+                                context,
+                                date: 'yyyy-MM-dd',
+                                millis: true,
                               ).format(e.timestamp),
                               child: Text(
-                                DateFormat(
-                                  'MMM dd HH:mm:ss',
+                                timeFormat(
+                                  context,
+                                  date: 'MMM dd',
+                                  seconds: true,
                                 ).format(e.timestamp),
                                 style: monoStyle.copyWith(fontSize: 12),
                               ),
@@ -842,7 +879,7 @@ class EventDetail extends ConsumerWidget {
         .value
         ?.where((p) => p.id == event.distinctId)
         .firstOrNull;
-    final fmt = DateFormat('yyyy-MM-dd HH:mm:ss.SSS');
+    final fmt = timeFormat(context, date: 'yyyy-MM-dd', millis: true);
     final props = event.properties.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
 
